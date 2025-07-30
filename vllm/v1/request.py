@@ -91,7 +91,7 @@ class Request:
                 raise ValueError(
                     "prompt_embeds must be of shape (seq_len, hidden_size)")
             prompt_token_ids = [0] * seq_len
-
+            print("D--: Request, set dummy prompt_token_ids", prompt_token_ids)
         self.prompt_token_ids = prompt_token_ids
         self.num_prompt_tokens = len(self.prompt_token_ids) if self.prompt_token_ids else self.prompt_embeds.shape[0]
         self._output_token_ids: list[int] = []

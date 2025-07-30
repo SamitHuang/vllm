@@ -101,14 +101,19 @@ class RequestState:
         self.lora_name = lora_name
         self.output_kind = output_kind
         self.prompt = prompt
-        self.prompt_token_ids = prompt_token_ids
-        self.prompt_len = len(prompt_token_ids) if prompt_token_ids is not None else len(prompt_embeds)
+        self.prompt_embeds = prompt_embeds
+        if prompt_embeds is not None and prompt_token_ids is None:
+            # Add support for prompt embedding. Create dummy token ids for RequestOutput 
+            self.prompt_token_ids = [0] * prompt_embeds.shape[0]
+        else:
+            self.prompt_token_ids = prompt_token_ids
+
+        self.prompt_len = len(prompt_token_ids) if prompt_token_ids is not None else prompt_embeds.shape[0]
         self.logprobs_processor = logprobs_processor
         self.detokenizer = detokenizer
         self.max_tokens_param = max_tokens_param
         self.is_prefilling = True
         self.queue = queue
-        self.prompt_embeds = prompt_embeds
 
         self.stats = RequestStateStats(
             arrival_time=arrival_time) if log_stats else None
