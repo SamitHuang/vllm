@@ -196,7 +196,15 @@ class LLMEngine:
         if not isinstance(request_id, str):
             raise TypeError(
                 f"request_id must be a string, got {type(request_id)}")
-
+        '''
+        # Create dummpy token IDs for prompt embedding if needed (similar to v0 engine)
+        if (isinstance(prompt, dict)
+            and prompt.get("prompt_embeds", None) is not None
+            and prompt.get("prompt_token_ids", None)) is None:
+            seq_len = prompt["prompt_embeds"].shape[0]
+            prompt["prompt_token_ids"] = [0] * seq_len
+        '''
+            
         # Process raw inputs into the request.
         prompt_str, request = self.processor.process_inputs(
             request_id, prompt, params, arrival_time, lora_request,

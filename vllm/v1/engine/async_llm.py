@@ -5,6 +5,8 @@ from collections.abc import AsyncGenerator, Mapping
 from copy import copy
 from typing import Any, Optional, Union
 
+import torch
+
 import numpy as np
 
 import vllm.envs as envs
@@ -229,16 +231,40 @@ class AsyncLLM(EngineClient):
             raise EngineDeadError()
 
         is_pooling = isinstance(params, PoolingParams)
+        '''
+        # Create dummpy token IDs for prompt embedding if needed (similar to v0 engine)
+        # TODO: try delete it. We can just set dummy token IDs in EngineCore to avoid tranferring dummy data via socket
+        if (isinstance(prompt, dict)
+            and prompt.get("prompt_embeds", None) is not None
+            and prompt.get("prompt_token_ids", None)) is None:
+            # prompt_embeds must be (seq_len, hidden_size), but if the user
+            # passes in a batch of size 1, i.e. (1, seq_len, hidden_size),
+            # we can unambiguously process the intent by squeezing the batch
+            # dimension.
+            if prompt["prompt_embeds"].ndim == 3:
+                prompt["prompt_embeds"] = torch.squeeze(prompt["prompt_embeds"], dim=0)
+            prompt_embeds = prompt["prompt_embeds"]
+            if prompt_embeds.ndim == 2:  
+                seq_len = prompt_embeds.shape[0]
+            else:
+                raise ValueError(
+                    "prompt_embeds must be of shape (seq_len, hidden_size)")
+            prompt["prompt_token_ids"] = [0] * seq_len
+        '''
 
         # Create a new output collector for the request.
         queue = RequestOutputCollector(output_kind=params.output_kind)
 
         # Convert Input --> Request.
+        # FIXME: here KeyError: 'prompt_token_ids'
+        # import pdb; pdb.set_trace()
         prompt_str, request = self.processor.process_inputs(
             request_id, prompt, params, arrival_time, lora_request,
             tokenization_kwargs, trace_headers, prompt_adapter_request,
             priority, data_parallel_rank)
 
+        print("D--: AysncLLM request to be sent: ", request)
+        print("D--: prompt embeds: ", request.prompt_embeds.shape)
         if is_pooling or params.n == 1:
             await self._add_request(request, prompt_str, None, 0, queue)
             return queue
@@ -262,8 +288,9 @@ class AsyncLLM(EngineClient):
         # Add the request to OutputProcessor (this process).
         self.output_processor.add_request(request, prompt, parent_req, index,
                                           queue)
-
         # Add the EngineCoreRequest to EngineCore (separate process).
+        # FIXME samit: for prompt embed: request.prompt_token_ids is None, prompt.prompt_embeds is tensor
+        # import pdb; pdb.set_trace()
         await self.engine_core.add_request_async(request)
 
         if self.log_requests:
@@ -299,13 +326,15 @@ class AsyncLLM(EngineClient):
         The caller of generate() iterates the returned AsyncGenerator,
         returning the RequestOutput back to the caller.
         """
-
+        # FIXME samit: temp change, remove try to see what error?
         try:
             # We start the output_handler on the first call to generate() so
             # we can call __init__ before the event loop, which enables us
             # to handle startup failure gracefully in the OpenAI server.
             self._run_output_handler()
 
+            print("D---: async llm generate")
+            # import pdb; pdb.set_trace()
             q = await self.add_request(
                 request_id,
                 prompt,
@@ -376,6 +405,7 @@ class AsyncLLM(EngineClient):
                 while True:
                     # 1) Pull EngineCoreOutputs from the EngineCore.
                     outputs = await engine_core.get_output_async()
+                    print("D--: AsyncLLM output_handler rec and got output from EngineCore: ", outputs)
                     num_outputs = len(outputs.outputs)
 
                     iteration_stats = IterationStats() if (
@@ -398,6 +428,8 @@ class AsyncLLM(EngineClient):
                         # NOTE: RequestOutputs are pushed to their queues.
                         assert not processed_outputs.request_outputs
 
+                        print("D--: AsyncLLM output_handler processed outputs: ", processed_outputs)
+
                         # Allow other asyncio tasks to run between chunks
                         if i + 1 < len(slices):
                             await asyncio.sleep(0)
@@ -405,6 +437,7 @@ class AsyncLLM(EngineClient):
                         # 3) Abort any reqs that finished due to stop strings.
                         await engine_core.abort_requests_async(
                             processed_outputs.reqs_to_abort)
+
 
                     # 4) Logging.
                     # TODO(rob): make into a coroutine and launch it in
@@ -469,6 +502,9 @@ class AsyncLLM(EngineClient):
             # We start the output_handler on the first call to generate() so
             # we can call __init__ before the event loop, which enables us
             # to handle startup failure gracefully in the OpenAI server.
+
+            # print("D---: 473, async llm encode")
+            # import pdb; pdb.set_trace()
             self._run_output_handler()
 
             q = await self.add_request(

@@ -623,6 +623,8 @@ async def cancel_responses(response_id: str, raw_request: Request):
 @load_aware_call
 async def create_chat_completion(request: ChatCompletionRequest,
                                  raw_request: Request):
+    print("D--: create chat completion")
+    # import pdb; pdb.set_trace()
     handler = chat(raw_request)
     if handler is None:
         return base(raw_request).create_error_response(

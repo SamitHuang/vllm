@@ -423,6 +423,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 num_computed_tokens=new_req_data.num_computed_tokens,
                 output_token_ids=[],
                 lora_request=new_req_data.lora_request,
+                prompt_embeds=new_req_data.prompt_embeds # Add prompt embedding support 
             )
 
             # Only relevant for models using M-RoPE (e.g, Qwen2-VL)
@@ -1086,6 +1087,44 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 mm_embeds.append(mm_embeds_item)
         return mm_embeds
 
+    def _gather_prompt_embeddings(self, scheduler_output: "SchedulerOutput") -> Optional[torch.Tensor]:
+        prompt_embeds_list: list[torch.Tensor] = []
+        has_prompt_embeds = False
+
+        for i, req_id in enumerate(self.input_batch.req_ids):
+            req_state = self.requests[req_id]
+            if req_state.prompt_embeds is not None:
+                has_prompt_embeds = True
+                num_scheduled_tokens = scheduler_output.num_scheduled_tokens[req_id]
+                # For prompt embedding, we need to provide the embeddings for the current step.
+                # This is different from token IDs where we only provide new tokens
+                start_idx = req_state.num_computed_tokens
+                end_idx = req_state.num_prompt_tokens + num_scheduled_tokens
+                print("D--: ", req_state.num_computed_tokens, num_scheduled_tokens)
+
+                end_idx = min(end_idx, req_state.prompt_embeds.shape[0])
+                
+                if start_idx < end_idx:
+                    unprocessed_prompt_embeds = req_state.prompt_embeds[start_idx:end_idx]
+                    if unprocessed_prompt_embeds.device != self.device: 
+                        unprocessed_prompt_embeds = unprocessed_prompt_embeds.to(self.device, self.dtype, non_blocking=True)
+                    prompt_embeds_list.append(unprocessed_prompt_embeds)
+                    
+                else:
+                    prompt_embeds_list.append(torch.empty(0, req_state.prompt_embeds.shape[1], dtype=req_state.prompt_embeds.dtype, device=req_state.prompt_embeds.device))
+            else:
+                prompt_embeds_list.append(torch.empty(0, dtype=self.dtype, device=self.device))
+        
+        if not has_prompt_embeds:
+            return None
+        
+        # Concatenate all prompt embeddings of input requests into batch tensor
+        if prompt_embeds_list:
+            return torch.cat(prompt_embeds_list, dim=0)
+        else:
+            return None
+
+
     def get_model(self) -> nn.Module:
         return self.model
 
@@ -1318,8 +1357,27 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             mm_embeds = self._gather_mm_embeddings(scheduler_output)
         else:
             mm_embeds = []
+        
+        # get prompt embedding if provided
+        # FIXME samit
+        # TODO: get the prompt embeddings from scheduled_output
+        # import pdb; pdb.set_trace()
+        prompt_embeds = self._gather_prompt_embeddings(scheduler_output)
+        print("D--: gather prompt_embeds from scheduled requests: ", prompt_embeds.shape, prompt_embeds)
 
-        if self.is_multimodal_model and get_pp_group().is_first_rank:
+        if prompt_embeds is not None and get_pp_group().is_first_rank:
+            # Add support for prompt embedding input
+            if prompt_embeds.shape[0] > 0:
+                # in prefill stage, we have prompt embedding
+                inputs_embeds = prompt_embeds
+                input_ids = None
+            else:
+                # in decode stage, starting from 2nd step, only the new token(s) will be used for model foward thanks to KV cache
+                input_ids = self.input_ids[:num_input_tokens]
+                inputs_embeds = None
+                print("D--: decode step, input ids: ", input_ids)
+
+        elif self.is_multimodal_model and get_pp_group().is_first_rank:
             # NOTE(woosuk): To unify token ids and soft tokens (vision
             # embeddings), we always use embeddings (rather than token ids)
             # as input to the multimodal model, even when the input is text.
@@ -1339,6 +1397,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             # multimodal models, it is not desirable for performance since
             # then the embedding layer is not included in the CUDA graph.
             input_ids = self.input_ids[:num_input_tokens]
+            # FIXME: allow input_embeds
             inputs_embeds = None
         if self.uses_mrope:
             positions = self.mrope_positions[:, :num_input_tokens]
@@ -1373,7 +1432,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 intermediate_tensors=intermediate_tensors,
                 inputs_embeds=inputs_embeds,
             )
-
+            print("D--: model runner forward step output: ", model_output.shape)
             self.maybe_wait_for_kv_save()
 
         if self.use_aux_hidden_state_outputs:
@@ -1449,6 +1508,8 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 sampling_metadata,
             )
             sampler_output.sampled_token_ids = output_token_ids
+        
+        print("D--: model runner sampler output: ", sampler_output)
 
         num_nans_in_logits = {}
         if envs.VLLM_COMPUTE_NANS_IN_LOGITS:
@@ -1601,6 +1662,12 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                     # Get the next token id from the request state.
                     req_id = self.input_batch.req_ids[i]
                     req_state = self.requests[req_id]
+
+                    if req_state.prompt_embeds is not None and req_state.prompt_token_ids is None:
+                        raise ValueError(
+                            f"Speculative decodeing (Eagle) is not supported when using prompt embedding. "
+                            f"Request {req_id} uses prompt embedding but speculative decoding request actual token IDs"
+                        )
                     seq_len = (req_state.num_computed_tokens +
                                scheduler_output.num_scheduled_tokens[req_id])
                     next_token_id = req_state.get_token_id(seq_len)
@@ -1711,6 +1778,13 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             # supported with speculative decoding.
             req_id = self.input_batch.req_ids[i]
             if req_id in self.input_batch.spec_decode_unsupported_reqs:
+                draft_token_ids.append([])
+                continue
+
+            # Skip requests that use prompt embeddings, since speculative decoding
+            # requires actual token IDs for the prompt
+            req_state = self.requests[req_id]
+            if req_state.prompt_embeds is not None and req_state.prompt_token_ids is None:
                 draft_token_ids.append([])
                 continue
 

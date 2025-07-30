@@ -238,6 +238,7 @@ class EngineCore:
         if not self.scheduler.has_requests():
             return {}, False
         scheduler_output = self.scheduler.schedule()
+        print("D--: scheduler_output: ", scheduler_output)
         model_output = self.execute_model(scheduler_output)
         engine_core_outputs = self.scheduler.update_from_output(
             scheduler_output, model_output)  # type: ignore
@@ -620,7 +621,9 @@ class EngineCoreProc(EngineCore):
                 logger.debug("EngineCore waiting for work.")
                 waited = True
             req = self.input_queue.get()
+            print("D--: EngineCore get input request: ", req)
             self._handle_client_request(*req)
+            print("D--: EngineCore handled input request: ", req)
 
         if waited:
             logger.debug("EngineCore loop active.")
@@ -633,6 +636,7 @@ class EngineCoreProc(EngineCore):
     def _process_engine_step(self) -> bool:
         """Called only when there are unfinished local requests."""
 
+        print("D--: the step_fn in core is :", self.step_fn)
         # Step the engine core.
         outputs, model_executed = self.step_fn()
         # Put EngineCoreOutputs into the output queue.
@@ -700,6 +704,7 @@ class EngineCoreProc(EngineCore):
         """Input socket IO thread."""
 
         # Msgpack serialization decoding.
+        print("D--: get EngineCoreProc inputs: ", EngineCoreRequest)
         add_request_decoder = MsgpackDecoder(EngineCoreRequest)
         generic_decoder = MsgpackDecoder()
 
@@ -748,7 +753,17 @@ class EngineCoreProc(EngineCore):
                     decoder = add_request_decoder if (
                         request_type
                         == EngineCoreRequestType.ADD) else generic_decoder
+                    '''
+                    print("D--: start decode request data", data_frames)
+                    if request_type == EngineCoreRequestType.ADD:
+                        print("D--: ADD, bufs ", data_frames)
+                        import msgspec
+                        raw_decoder = msgspec.msgpack.Decoder()
+                        raw_result = raw_decoder.decode(data_frames[0])
+                        print('bufs[0] raw data: ', raw_result)
+                    '''
                     request = decoder.decode(data_frames)
+                    print("D--: decoded request in EngineCore: ", request)
 
                     # Push to input queue for core busy loop.
                     self.input_queue.put_nowait((request_type, request))

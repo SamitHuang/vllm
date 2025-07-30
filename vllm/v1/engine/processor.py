@@ -261,17 +261,28 @@ class Processor:
             prompt_adapter_request=prompt_adapter_request,
             return_mm_hashes=self.use_hash,
         )
+
+        # from non prompt_embed, processed_inputs = {"prompt_token_ids": tensors(...), ...}
         from vllm.platforms import current_platform
+
         current_platform.validate_request(
             prompt=prompt,
             params=params,
             processed_inputs=processed_inputs,
         )
         eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
-
+        
+        # D--: ok till here, for prompt_embed, processed_inputs = {'type': 'embeds', 'prompt_embeds': tensor(...)}
+        # import pdb; pdb.set_trace()
+        # FIXME: enable-prompt-embed error comes
         self._validate_model_inputs(processed_inputs, lora_request)
 
         encoder_inputs, decoder_inputs = split_enc_dec_inputs(processed_inputs)
+        if decoder_inputs['type'] == 'embeds':
+            decoder_input_len = decoder_inputs['prompt_embeds'].shape[0]
+        else:
+            decoder_input_len = len(decoder_inputs['prompt_token_ids'])
+        print("D--: decoder input len: ", decoder_input_len)
 
         # TODO: Impl encoder-decoder
         if encoder_inputs is not None:
@@ -286,7 +297,7 @@ class Processor:
             if sampling_params.max_tokens is None:
                 sampling_params.max_tokens = (
                     self.model_config.max_model_len -
-                    len(decoder_inputs["prompt_token_ids"]))
+                    decoder_input_len)
             sampling_params.update_from_generation_config(
                 self.generation_config_fields, eos_token_id)
             sampling_params.update_from_tokenizer(
@@ -344,7 +355,8 @@ class Processor:
 
         return decoder_inputs.get("prompt"), EngineCoreRequest(
             request_id=request_id,
-            prompt_token_ids=decoder_inputs["prompt_token_ids"],
+            prompt_token_ids=decoder_inputs.get("prompt_token_ids"),
+            prompt_embeds=decoder_inputs.get("prompt_embeds"),
             mm_inputs=sorted_mm_inputs,
             mm_hashes=sorted_mm_hashes,
             mm_placeholders=sorted_mm_positions,
@@ -382,19 +394,29 @@ class Processor:
         model_config = self.model_config
         tokenizer = self.tokenizer.get_lora_tokenizer(lora_request)
 
-        prompt_ids = prompt_inputs["prompt_token_ids"]
-        if not prompt_ids:
+        # import pdb; pdb.set_trace()
+        if "prompt_token_ids" in prompt_inputs:
+            prompt_ids = prompt_inputs["prompt_token_ids"]
+        else:
+            prompt_ids = None
+            
+        if prompt_inputs["type"] == 'embeds':
+            if prompt_inputs["prompt_embeds"] is None:
+                raise ValueError(f"The prompt_embeds cannot be empty if prompt_type is 'embeds'")
+            prompt_len = len(prompt_inputs["prompt_embeds"])
+        else:
             if prompt_type == "encoder" and model_config.is_multimodal_model:
                 pass  # Mllama may have empty encoder inputs for text-only data
             else:
-                raise ValueError(f"The {prompt_type} prompt cannot be empty")
+                raise ValueError(f"The {prompt_type} prompt cannot be empty if prompt_embeds is not provided")
 
-        max_input_id = max(prompt_ids, default=0)
-        if max_input_id > tokenizer.max_token_id:
-            raise ValueError(f"Token id {max_input_id} is out of vocabulary")
+            max_input_id = max(prompt_ids, default=0)
+            if max_input_id > tokenizer.max_token_id:
+                raise ValueError(f"Token id {max_input_id} is out of vocabulary")
+            prompt_len = prompt_inputs["prompt_embeds"].shape[0]
 
         max_prompt_len = self.model_config.max_model_len
-        if len(prompt_ids) > max_prompt_len:
+        if prompt_len > max_prompt_len:
             if prompt_type == "encoder" and model_config.is_multimodal_model:
                 mm_registry = self.input_preprocessor.mm_registry
                 mm_processor = mm_registry.create_processor(
@@ -418,7 +440,7 @@ class Processor:
                     "number of text tokens.")
 
             raise ValueError(
-                f"The {prompt_type} prompt (length {len(prompt_ids)}) is "
+                f"The {prompt_type} prompt (length {prompt_len}) is "
                 f"longer than the maximum model length of {max_prompt_len}. "
                 f"{suggestion}")
 

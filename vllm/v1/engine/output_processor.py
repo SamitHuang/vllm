@@ -86,7 +86,8 @@ class RequestState:
         lora_name: Optional[str],
         output_kind: RequestOutputKind,
         prompt: Optional[str],
-        prompt_token_ids: list[int],
+        prompt_token_ids: Optional[list[int]],
+        prompt_embeds: Optional[torch.Tensor],
         logprobs_processor: Optional[LogprobsProcessor],
         detokenizer: Optional[IncrementalDetokenizer],
         max_tokens_param: Optional[int],
@@ -101,12 +102,13 @@ class RequestState:
         self.output_kind = output_kind
         self.prompt = prompt
         self.prompt_token_ids = prompt_token_ids
-        self.prompt_len = len(prompt_token_ids)
+        self.prompt_len = len(prompt_token_ids) if prompt_token_ids is not None else len(prompt_embeds)
         self.logprobs_processor = logprobs_processor
         self.detokenizer = detokenizer
         self.max_tokens_param = max_tokens_param
         self.is_prefilling = True
         self.queue = queue
+        self.prompt_embeds = prompt_embeds
 
         self.stats = RequestStateStats(
             arrival_time=arrival_time) if log_stats else None
@@ -131,6 +133,7 @@ class RequestState:
                 tokenizer=tokenizer,
                 request=request,
             )
+            # FIXME samit
             detokenizer = IncrementalDetokenizer.from_new_request(
                 tokenizer=tokenizer,
                 request=request,
@@ -143,6 +146,9 @@ class RequestState:
             assert request.pooling_params is not None
             output_kind = request.pooling_params.output_kind
 
+        # import pdb; pdb.set_trace()
+        # request: EngineCoreRequest
+        # cls: RequestState
         return cls(
             request_id=request.request_id,
             parent_req=parent_req,
@@ -152,6 +158,7 @@ class RequestState:
             output_kind=output_kind,
             prompt=prompt,
             prompt_token_ids=request.prompt_token_ids,
+            prompt_embeds=request.prompt_embeds,  # FIXME samit: for non prompt_embeds inference, will it be None?
             logprobs_processor=logprobs_processor,
             detokenizer=detokenizer,
             max_tokens_param=max_tokens_param,
@@ -407,10 +414,13 @@ class OutputProcessor:
                     engine_core_output)
 
             # 4) Create and handle RequestOutput objects.
+            # FIXME samit: checkou whether the request_output will be sent to client
+            # import pdb; pdb.set_trace()
             if request_output := req_state.make_request_output(
                     new_token_ids, pooling_output, finish_reason, stop_reason,
                     kv_transfer_params, num_cached_tokens):
                 if req_state.queue is not None:
+                    print("D--: request output put into Output Collector queue: ", request_output)
                     # AsyncLLM: put into queue for handling by generate().
                     req_state.queue.put(request_output)
                 else:
@@ -430,6 +440,8 @@ class OutputProcessor:
                     reqs_to_abort.append(req_id)
 
                 # Track per-request stats
+                # import pdb; pdb.set_trace()
+                print("D--: output procoessor update states from finish, reason: ", finish_reason)
                 self._update_stats_from_finished(req_state, finish_reason,
                                                  iteration_stats)
 
@@ -467,7 +479,7 @@ class OutputProcessor:
         assert req_state.stats is not None
         iteration_stats.update_from_finished_request(
             finish_reason=finish_reason,
-            num_prompt_tokens=len(req_state.prompt_token_ids),
+            num_prompt_tokens=len(req_state.prompt_token_ids) if req_state.prompt_token_ids is not None else req_state.prompt_embeds.shape[0],
             max_tokens_param=req_state.max_tokens_param,
             req_stats=req_state.stats)
         self.lora_states.finish_request(req_state)

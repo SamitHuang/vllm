@@ -1293,7 +1293,6 @@ class EngineArgs:
 
     def _is_v1_supported_oracle(self, model_config: ModelConfig) -> bool:
         """Oracle for whether to use V0 or V1 Engine by default."""
-
         #############################################################
         # Unsupported Feature Flags on V1.
 
@@ -1378,10 +1377,13 @@ class EngineArgs:
             return False
 
         # No text embedding inputs so far.
+        ''' debug, why v1 doesn't support prompt embed infer
+        import pdb; pdb.set_trace()
         if self.enable_prompt_embeds:
             _raise_or_fallback(feature_name="--enable-prompt-embeds",
                                recommend_to_remove=False)
             return False
+        '''
 
         # No Mamba or Encoder-Decoder so far.
         if not model_config.is_v1_compatible:

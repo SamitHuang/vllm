@@ -48,7 +48,7 @@ class EngineCoreRequest(
         gc=False):  # type: ignore[call-arg]
 
     request_id: str
-    prompt_token_ids: list[int]
+    prompt_token_ids: Optional[list[int]]
     mm_inputs: Optional[Sequence[Optional[MultiModalKwargs]]]
     mm_hashes: Optional[list[str]]
     mm_placeholders: Optional[list[PlaceholderRange]]
@@ -69,6 +69,7 @@ class EngineCoreRequest(
     # a wave finished notification is received.
     current_wave: int = 0
     priority: int = 0
+    prompt_embeds: Optional[torch.Tensor] = None 
 
 
 class EngineCoreEventType(enum.IntEnum):
