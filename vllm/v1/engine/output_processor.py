@@ -422,6 +422,7 @@ class OutputProcessor:
                 if req_state.queue is not None:
                     print("D--: request output put into Output Collector queue: ", request_output)
                     # AsyncLLM: put into queue for handling by generate().
+                    # FIXME samit: debug to set 
                     req_state.queue.put(request_output)
                 else:
                     # LLMEngine: return list of RequestOutputs.
