@@ -1363,7 +1363,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
         # TODO: get the prompt embeddings from scheduled_output
         # import pdb; pdb.set_trace()
         prompt_embeds = self._gather_prompt_embeddings(scheduler_output)
-        print("D--: gather prompt_embeds from scheduled requests: ", prompt_embeds.shape, prompt_embeds)
+        # print("D--: gather prompt_embeds from scheduled requests: ", prompt_embeds.shape, prompt_embeds)
 
         if prompt_embeds is not None and get_pp_group().is_first_rank:
             # Add support for prompt embedding input

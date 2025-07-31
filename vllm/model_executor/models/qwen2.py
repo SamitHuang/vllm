@@ -352,7 +352,6 @@ class Qwen2Model(nn.Module):
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
 
-        print("D--: qwen block inputs: ", positions.shape, hidden_states.shape)
         for layer in self.layers[self.start_layer:self.end_layer]:
             hidden_states, residual = layer(
                 positions,
@@ -365,7 +364,6 @@ class Qwen2Model(nn.Module):
                 "residual": residual
             })
         hidden_states, _ = self.norm(hidden_states, residual)
-        print("D--: qwen model output hidden_states: ", hidden_states.shape)
         return hidden_states
 
     def load_weights(self, weights: Iterable[tuple[str,
@@ -478,7 +476,7 @@ class Qwen2ForCausalLM(nn.Module, SupportsLoRA, SupportsPP):
         intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, IntermediateTensors]:
-        print("D--: qwen2 forward, inputs_embeds: ", inputs_embeds)
+        # print("D--: qwen2 forward, inputs_embeds: ", inputs_embeds)
         hidden_states = self.model(input_ids, positions, intermediate_tensors,
                                    inputs_embeds)
         return hidden_states

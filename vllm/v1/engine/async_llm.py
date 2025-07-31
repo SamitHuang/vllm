@@ -264,7 +264,7 @@ class AsyncLLM(EngineClient):
             priority, data_parallel_rank)
 
         print("D--: AysncLLM request to be sent: ", request)
-        print("D--: prompt embeds: ", request.prompt_embeds.shape)
+        # print("D--: prompt embeds: ", request.prompt_embeds.shape)
         if is_pooling or params.n == 1:
             await self._add_request(request, prompt_str, None, 0, queue)
             return queue

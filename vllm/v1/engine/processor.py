@@ -272,7 +272,7 @@ class Processor:
         )
         eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
         
-        # D--: ok till here, for prompt_embed, processed_inputs = {'type': 'embeds', 'prompt_embeds': tensor(...)}
+        # for prompt_embeds, processed_inputs = {'type': 'embeds', 'prompt_embeds': tensor(...)}
         # import pdb; pdb.set_trace()
         # FIXME: enable-prompt-embed error comes
         self._validate_model_inputs(processed_inputs, lora_request)
@@ -394,26 +394,23 @@ class Processor:
         model_config = self.model_config
         tokenizer = self.tokenizer.get_lora_tokenizer(lora_request)
 
-        # import pdb; pdb.set_trace()
-        if "prompt_token_ids" in prompt_inputs:
-            prompt_ids = prompt_inputs["prompt_token_ids"]
-        else:
-            prompt_ids = None
+        prompt_ids = prompt_inputs.get("prompt_token_ids", None)
             
         if prompt_inputs["type"] == 'embeds':
             if prompt_inputs["prompt_embeds"] is None:
                 raise ValueError(f"The prompt_embeds cannot be empty if prompt_type is 'embeds'")
             prompt_len = len(prompt_inputs["prompt_embeds"])
         else:
-            if prompt_type == "encoder" and model_config.is_multimodal_model:
-                pass  # Mllama may have empty encoder inputs for text-only data
-            else:
-                raise ValueError(f"The {prompt_type} prompt cannot be empty if prompt_embeds is not provided")
+            if not prompt_ids:    
+                if prompt_type == "encoder" and model_config.is_multimodal_model:
+                    pass  # Mllama may have empty encoder inputs for text-only data
+                else:
+                    raise ValueError(f"The {prompt_type} prompt cannot be empty if prompt_embeds is not provided")
 
             max_input_id = max(prompt_ids, default=0)
             if max_input_id > tokenizer.max_token_id:
                 raise ValueError(f"Token id {max_input_id} is out of vocabulary")
-            prompt_len = prompt_inputs["prompt_embeds"].shape[0]
+            prompt_len = len(prompt_ids)
 
         max_prompt_len = self.model_config.max_model_len
         if prompt_len > max_prompt_len:
