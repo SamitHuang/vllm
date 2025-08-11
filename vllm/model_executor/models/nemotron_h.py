@@ -25,6 +25,7 @@ from torch import nn
 
 from vllm import envs
 from vllm.attention.layer import Attention
+from vllm.compilation.decorators import support_torch_compile
 from vllm.config import CacheConfig, VllmConfig
 from vllm.distributed import get_tensor_model_parallel_world_size
 from vllm.distributed.parallel_state import get_pp_group
@@ -38,7 +39,8 @@ from vllm.model_executor.layers.logits_processor import LogitsProcessor
 from vllm.model_executor.layers.mamba.mamba2_metadata import (
     Mamba2Metadata, prepare_mamba2_metadata)
 from vllm.model_executor.layers.mamba.mamba_mixer2 import MambaMixer2
-from vllm.model_executor.layers.mamba.mamba_utils import get_mamba_state_shape
+from vllm.model_executor.layers.mamba.mamba_utils import (
+    MambaStateShapeCalculator)
 from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     DEFAULT_VOCAB_PADDING_SIZE, ParallelLMHead, VocabParallelEmbedding)
@@ -172,9 +174,9 @@ class NemotronHMambaDecoderLayer(nn.Module):
         else:
             hidden_states, residual = self.norm(hidden_states, residual)
 
-        hidden_states = self.mixer(hidden_states, mamba_cache_params,
-                                   mamba2_metadata)
-        return hidden_states, residual
+        output = torch.empty_like(hidden_states)
+        self.mixer(hidden_states, output, mamba_cache_params, mamba2_metadata)
+        return output, residual
 
 
 class NemotronHAttention(nn.Module):
@@ -292,6 +294,7 @@ ALL_DECODER_LAYER_TYPES = {
 }
 
 
+@support_torch_compile
 class NemotronHModel(nn.Module):
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
@@ -480,7 +483,7 @@ class NemotronHForCausalLM(nn.Module, HasInnerState, SupportsLoRA, SupportsPP,
         hf_config = vllm_config.model_config.hf_config
         intermediate_size = hf_config.expand * hf_config.hidden_size
 
-        return get_mamba_state_shape(
+        return MambaStateShapeCalculator.mamba2_state_shape(
             intermediate_size=intermediate_size,
             tp_world_size=parallel_config.tensor_parallel_size,
             n_groups=hf_config.n_groups,

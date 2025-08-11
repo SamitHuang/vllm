@@ -49,7 +49,6 @@ from vllm.model_executor.model_loader.weight_utils import (
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors
 
-from .adapters import as_seq_cls_model
 from .interfaces import SupportsLoRA, SupportsPP
 from .utils import (AutoWeightsLoader, PPMissingLayer, extract_layer_index,
                     is_pp_missing_parameter,
@@ -168,18 +167,11 @@ class LlamaAttention(nn.Module):
                               rope_scaling=rope_scaling,
                               quant_config=quant_config)
 
-        if hasattr(config, "interleaved_sliding_window"):
-            interleaved_sliding_window = config.interleaved_sliding_window
-            if isinstance(interleaved_sliding_window, int):
-                sliding_window = interleaved_sliding_window
-            elif isinstance(interleaved_sliding_window, list):
-                sw_idx = layer_idx % len(interleaved_sliding_window)
-                sliding_window = interleaved_sliding_window[sw_idx]
-            else:
-                raise ValueError(
-                    f"{type(interleaved_sliding_window)} is not supported.")
-        else:
-            sliding_window = None
+        sliding_window = None
+        if layer_types := getattr(config, "layer_types", None):
+            is_sliding = layer_types[layer_idx] == "sliding_attention"
+            if is_sliding:
+                sliding_window = config.sliding_window
 
         self.attn = Attention(
             self.num_heads,
@@ -646,6 +638,3 @@ class LlamaForCausalLM(nn.Module, SupportsLoRA, SupportsPP):
                 name = name.replace(item, mapping[item])
 
         return name, loaded_weight
-
-
-LlamaForSequenceClassification = as_seq_cls_model(LlamaForCausalLM)

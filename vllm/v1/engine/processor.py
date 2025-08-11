@@ -16,11 +16,10 @@ from vllm.multimodal.inputs import PlaceholderRange
 from vllm.multimodal.processing import EncDecMultiModalProcessor
 from vllm.multimodal.utils import merge_and_sort_multimodal_metadata
 from vllm.pooling_params import PoolingParams
-from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import SamplingParams
 from vllm.transformers_utils.tokenizer_group import TokenizerGroup
 from vllm.v1.engine import EngineCoreRequest
-from vllm.v1.engine.mm_input_cache import MirroredProcessingCache
+from vllm.v1.engine.mm_input_cache import MultiModalInputCacheClient
 from vllm.v1.structured_output.backend_guidance import (
     validate_guidance_grammar)
 from vllm.v1.structured_output.backend_outlines import (
@@ -51,11 +50,8 @@ class Processor:
                                                     self.tokenizer,
                                                     mm_registry)
 
-        self.mm_input_cache_client = MirroredProcessingCache(self.model_config)
-
-        # Multi-modal hasher (for images)
-        self.use_hash = self.mm_input_cache_client.use_cache or \
-            self.cache_config.enable_prefix_caching
+        self.mm_input_cache_client = MultiModalInputCacheClient(
+            self.model_config, mm_registry)
 
     @property
     def mm_registry(self):
@@ -66,8 +62,11 @@ class Processor:
         params: SamplingParams,
     ) -> None:
         max_logprobs = self.model_config.max_logprobs
+        if max_logprobs == -1:
+            return
         # Validate sample logprobs.
-        if params.logprobs and params.logprobs > max_logprobs:
+        if params.logprobs and (params.logprobs == -1
+                                or params.logprobs > max_logprobs):
             raise ValueError(
                 f"Requested sample logprobs of {params.logprobs}, "
                 f"which is greater than max allowed: {max_logprobs}")
@@ -90,6 +89,10 @@ class Processor:
             return
         if not params.allowed_token_ids:
             raise ValueError("allowed_token_ids is not None and empty!")
+        if self.tokenizer is None:
+            # When skip_tokenizer_init=True, we can't validate token IDs
+            # Skip validation and let the model handle invalid tokens
+            return
         tokenizer = self.tokenizer.get_lora_tokenizer(lora_request)
         vocab_size = len(tokenizer)
         if not all(0 <= tid < vocab_size for tid in params.allowed_token_ids):
@@ -226,7 +229,6 @@ class Processor:
         lora_request: Optional[LoRARequest] = None,
         tokenization_kwargs: Optional[dict[str, Any]] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
-        prompt_adapter_request: Optional[PromptAdapterRequest] = None,
         priority: int = 0,
         data_parallel_rank: Optional[int] = None,
     ) -> tuple[Optional[str], EngineCoreRequest]:
@@ -237,8 +239,6 @@ class Processor:
         self._validate_params(params, lora_request)
         if trace_headers is not None:
             raise ValueError("V1 does not support tracing yet.")
-        if prompt_adapter_request is not None:
-            raise ValueError("V1 does not support prompt_adapter_request.")
 
         data_parallel_size = self.vllm_config.parallel_config.data_parallel_size
         if data_parallel_rank is not None and not (0 <= data_parallel_rank <
@@ -253,13 +253,13 @@ class Processor:
         # 1. Tokenize text prompt, with LoRA request if one exists.
         # 2. For multimodal models with a merged preprocessor, preprocess
         #   multimodal data and expand prompt token ids accordingly.
-        # 3. Apply prompt adapter to prompt token ids if one exists.
+        return_mm_hashes = (self.model_config.processor_return_mm_hashes
+                            or bool(self.cache_config.enable_prefix_caching))
         processed_inputs: ProcessorInputs = self.input_preprocessor.preprocess(
             prompt,
             tokenization_kwargs=tokenization_kwargs,
             lora_request=lora_request,
-            prompt_adapter_request=prompt_adapter_request,
-            return_mm_hashes=self.use_hash,
+            return_mm_hashes=return_mm_hashes,
         )
 
         # from non prompt_embed, processed_inputs = {"prompt_token_ids": tensors(...), ...}
@@ -300,8 +300,9 @@ class Processor:
                     decoder_input_len)
             sampling_params.update_from_generation_config(
                 self.generation_config_fields, eos_token_id)
-            sampling_params.update_from_tokenizer(
-                self.tokenizer.get_lora_tokenizer(lora_request))
+            if self.tokenizer is not None:
+                sampling_params.update_from_tokenizer(
+                    self.tokenizer.get_lora_tokenizer(lora_request))
         else:
             pooling_params = params.clone()
 
@@ -321,7 +322,7 @@ class Processor:
                 sorted_mm_hashes,
             ) = merge_and_sort_multimodal_metadata(
                 decoder_inputs["mm_placeholders"],
-                decoder_inputs["mm_hashes"] if self.use_hash else None,
+                decoder_inputs["mm_hashes"] if return_mm_hashes else None,
             )
 
             # The output of merged multi-modal processor (`decoder_mm_inputs`)
@@ -348,7 +349,7 @@ class Processor:
                 ]
 
             if sorted_mm_hashes is not None:
-                sorted_mm_inputs = self.mm_input_cache_client.get_and_update_p0(
+                sorted_mm_inputs = self.mm_input_cache_client.get_and_update(
                     orig_sorted_mm_inputs, sorted_mm_hashes)
             else:
                 sorted_mm_inputs = orig_sorted_mm_inputs
@@ -392,7 +393,6 @@ class Processor:
         prompt_type: Literal["encoder", "decoder"],
     ):
         model_config = self.model_config
-        tokenizer = self.tokenizer.get_lora_tokenizer(lora_request)
 
         prompt_ids = prompt_inputs.get("prompt_token_ids", None)
             
@@ -406,11 +406,17 @@ class Processor:
                     pass  # Mllama may have empty encoder inputs for text-only data
                 else:
                     raise ValueError(f"The {prompt_type} prompt cannot be empty if prompt_embeds is not provided")
-
-            max_input_id = max(prompt_ids, default=0)
-            if max_input_id > tokenizer.max_token_id:
-                raise ValueError(f"Token id {max_input_id} is out of vocabulary")
             prompt_len = len(prompt_ids)
+
+        if self.model_config.skip_tokenizer_init:
+            tokenizer = None
+        else:
+            tokenizer = self.tokenizer.get_lora_tokenizer(lora_request)
+            if prompt_inputs["type"] != 'embeds':
+                max_input_id = max(prompt_ids, default=0)
+                if max_input_id > tokenizer.max_token_id:
+                    raise ValueError(
+                        f"Token id {max_input_id} is out of vocabulary")
 
         max_prompt_len = self.model_config.max_model_len
         if prompt_len > max_prompt_len:
