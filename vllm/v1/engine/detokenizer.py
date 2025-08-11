@@ -52,8 +52,6 @@ class IncrementalDetokenizer:
 
         assert request.sampling_params is not None
 
-        # FIXME samit
-        # import pdb; pdb.set_trace()
         if tokenizer is None:
             # No tokenizer => skipping detokenization.
             return IncrementalDetokenizer()
@@ -179,7 +177,6 @@ class FastIncrementalDetokenizer(BaseIncrementalDetokenizer):
         self.tokenizer: Tokenizer = tokenizer._tokenizer
 
         # Find a safe place to start.
-        # FIXME samit, no prompt_token_ids for prompt embeds
         if request.prompt_token_ids is not None:
             prompt_suffix = request.prompt_token_ids
             prompt_len = len(prompt_suffix)

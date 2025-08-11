@@ -91,7 +91,6 @@ class Request:
                 raise ValueError(
                     "prompt_embeds must be of shape (seq_len, hidden_size)")
             prompt_token_ids = [0] * seq_len
-            print("D--: Request, set dummy prompt_token_ids", prompt_token_ids)
         self.prompt_token_ids = prompt_token_ids
         self.num_prompt_tokens = len(self.prompt_token_ids) if self.prompt_token_ids else self.prompt_embeds.shape[0]
         self._output_token_ids: list[int] = []
@@ -173,13 +172,6 @@ class Request:
 
     @property
     def num_tokens(self) -> int:
-        '''
-        if self.prompt_embeds is not None and self.prompt_token_ids is None:
-            prompt_length = self.prompt_embeds.shape[0] if self.prompt_embeds.dim() >= 1 else 1
-            print(f"D--: prompt_length: {prompt_length}, output token length: {len(self._output_token_ids)}")
-            return prompt_length + len(self._output_token_ids)
-        else:
-        '''
         return len(self._all_token_ids)
 
     @property

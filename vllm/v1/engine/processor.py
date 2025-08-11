@@ -272,9 +272,6 @@ class Processor:
         )
         eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
         
-        # for prompt_embeds, processed_inputs = {'type': 'embeds', 'prompt_embeds': tensor(...)}
-        # import pdb; pdb.set_trace()
-        # FIXME: enable-prompt-embed error comes
         self._validate_model_inputs(processed_inputs, lora_request)
 
         encoder_inputs, decoder_inputs = split_enc_dec_inputs(processed_inputs)
@@ -282,7 +279,6 @@ class Processor:
             decoder_input_len = decoder_inputs['prompt_embeds'].shape[0]
         else:
             decoder_input_len = len(decoder_inputs['prompt_token_ids'])
-        print("D--: decoder input len: ", decoder_input_len)
 
         # TODO: Impl encoder-decoder
         if encoder_inputs is not None:

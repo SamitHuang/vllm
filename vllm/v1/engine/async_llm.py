@@ -269,14 +269,10 @@ class AsyncLLM(EngineClient):
         queue = RequestOutputCollector(output_kind=params.output_kind)
 
         # Convert Input --> Request.
-        # FIXME: here KeyError: 'prompt_token_ids'
-        # import pdb; pdb.set_trace()
         prompt_str, request = self.processor.process_inputs(
             request_id, prompt, params, arrival_time, lora_request,
             tokenization_kwargs, trace_headers, priority, data_parallel_rank)
 
-        print("D--: AysncLLM request to be sent: ", request)
-        # print("D--: prompt embeds: ", request.prompt_embeds.shape)
         if is_pooling or params.n == 1:
             await self._add_request(request, prompt_str, None, 0, queue)
             return queue
@@ -301,8 +297,6 @@ class AsyncLLM(EngineClient):
         self.output_processor.add_request(request, prompt, parent_req, index,
                                           queue)
         # Add the EngineCoreRequest to EngineCore (separate process).
-        # FIXME samit: for prompt embed: request.prompt_token_ids is None, prompt.prompt_embeds is tensor
-        # import pdb; pdb.set_trace()
         await self.engine_core.add_request_async(request)
 
         if self.log_requests:
@@ -337,15 +331,12 @@ class AsyncLLM(EngineClient):
         The caller of generate() iterates the returned AsyncGenerator,
         returning the RequestOutput back to the caller.
         """
-        # FIXME samit: temp change, remove try to see what error?
         try:
             # We start the output_handler on the first call to generate() so
             # we can call __init__ before the event loop, which enables us
             # to handle startup failure gracefully in the OpenAI server.
             self._run_output_handler()
 
-            print("D---: async llm generate")
-            # import pdb; pdb.set_trace()
             q = await self.add_request(
                 request_id,
                 prompt,
@@ -415,7 +406,6 @@ class AsyncLLM(EngineClient):
                 while True:
                     # 1) Pull EngineCoreOutputs from the EngineCore.
                     outputs = await engine_core.get_output_async()
-                    print("D--: AsyncLLM output_handler rec and got output from EngineCore: ", outputs)
                     num_outputs = len(outputs.outputs)
 
                     iteration_stats = IterationStats() if (
@@ -437,8 +427,6 @@ class AsyncLLM(EngineClient):
                             outputs_slice, outputs.timestamp, iteration_stats)
                         # NOTE: RequestOutputs are pushed to their queues.
                         assert not processed_outputs.request_outputs
-
-                        print("D--: AsyncLLM output_handler processed outputs: ", processed_outputs)
 
                         # Allow other asyncio tasks to run between chunks
                         if i + 1 < len(slices):
@@ -502,8 +490,6 @@ class AsyncLLM(EngineClient):
             # we can call __init__ before the event loop, which enables us
             # to handle startup failure gracefully in the OpenAI server.
 
-            # print("D---: 473, async llm encode")
-            # import pdb; pdb.set_trace()
             self._run_output_handler()
 
             q = await self.add_request(

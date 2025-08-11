@@ -424,7 +424,6 @@ class Scheduler(SchedulerInterface):
                         continue
 
                     num_new_tokens = min(num_new_tokens, token_budget)
-                    print("D--: num_new_tokens in scheduler", num_new_tokens)
                     assert num_new_tokens > 0
 
                     # Schedule encoder inputs.

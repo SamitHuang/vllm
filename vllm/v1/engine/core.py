@@ -270,7 +270,6 @@ class EngineCore:
         if not self.scheduler.has_requests():
             return {}, False
         scheduler_output = self.scheduler.schedule()
-        print("D--: scheduler_output: ", scheduler_output)
         model_output = self.execute_model_with_error_logging(
             self.model_executor.execute_model,  # type: ignore
             scheduler_output)
@@ -712,9 +711,7 @@ class EngineCoreProc(EngineCore):
                 logger.debug("EngineCore waiting for work.")
                 waited = True
             req = self.input_queue.get()
-            print("D--: EngineCore get input request: ", req)
             self._handle_client_request(*req)
-            print("D--: EngineCore handled input request: ", req)
 
         if waited:
             logger.debug("EngineCore loop active.")
@@ -727,7 +724,6 @@ class EngineCoreProc(EngineCore):
     def _process_engine_step(self) -> bool:
         """Called only when there are unfinished local requests."""
 
-        print("D--: the step_fn in core is :", self.step_fn)
         # Step the engine core.
         outputs, model_executed = self.step_fn()
         # Put EngineCoreOutputs into the output queue.
@@ -796,7 +792,6 @@ class EngineCoreProc(EngineCore):
         """Input socket IO thread."""
 
         # Msgpack serialization decoding.
-        print("D--: get EngineCoreProc inputs: ", EngineCoreRequest)
         add_request_decoder = MsgpackDecoder(EngineCoreRequest)
         generic_decoder = MsgpackDecoder()
 
@@ -852,7 +847,6 @@ class EngineCoreProc(EngineCore):
                         request = self.preprocess_add_request(request)
                     else:
                         request = generic_decoder.decode(data_frames)
-                    print("D--: decoded request in EngineCore: ", request)
 
                     # Push to input queue for core busy loop.
                     self.input_queue.put_nowait((request_type, request))

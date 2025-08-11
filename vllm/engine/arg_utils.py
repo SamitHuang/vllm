@@ -1417,15 +1417,6 @@ class EngineArgs:
                                    recommend_to_remove=False)
                 return False
 
-        # No text embedding inputs so far.
-        ''' debug, why v1 doesn't support prompt embed infer
-        import pdb; pdb.set_trace()
-        if self.enable_prompt_embeds:
-            _raise_or_fallback(feature_name="--enable-prompt-embeds",
-                               recommend_to_remove=False)
-            return False
-        '''
-
         # No Mamba or Encoder-Decoder so far.
         if not model_config.is_v1_compatible:
             _raise_or_fallback(feature_name=model_config.architectures,

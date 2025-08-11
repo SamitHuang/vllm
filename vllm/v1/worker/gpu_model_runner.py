@@ -1208,7 +1208,6 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
 
         for i, req_id in enumerate(self.input_batch.req_ids):
             req_state = self.requests[req_id]
-            print("D--: req_state ", req_state)
             if req_state.prompt_embeds is not None:
                 has_prompt_embeds = True
                 num_scheduled_tokens = scheduler_output.num_scheduled_tokens[req_id]

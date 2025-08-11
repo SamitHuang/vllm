@@ -138,7 +138,6 @@ class RequestState:
                 tokenizer=tokenizer,
                 request=request,
             )
-            # FIXME samit
             detokenizer = IncrementalDetokenizer.from_new_request(
                 tokenizer=tokenizer,
                 request=request,
@@ -151,9 +150,6 @@ class RequestState:
             assert request.pooling_params is not None
             output_kind = request.pooling_params.output_kind
 
-        # import pdb; pdb.set_trace()
-        # request: EngineCoreRequest
-        # cls: RequestState
         return cls(
             request_id=request.request_id,
             parent_req=parent_req,
@@ -163,7 +159,7 @@ class RequestState:
             output_kind=output_kind,
             prompt=prompt,
             prompt_token_ids=request.prompt_token_ids,
-            prompt_embeds=request.prompt_embeds,  # FIXME samit: for non prompt_embeds inference, will it be None?
+            prompt_embeds=request.prompt_embeds, 
             logprobs_processor=logprobs_processor,
             detokenizer=detokenizer,
             max_tokens_param=max_tokens_param,
@@ -421,15 +417,11 @@ class OutputProcessor:
                     engine_core_output)
 
             # 4) Create and handle RequestOutput objects.
-            # FIXME samit: checkou whether the request_output will be sent to client
-            # import pdb; pdb.set_trace()
             if request_output := req_state.make_request_output(
                     new_token_ids, pooling_output, finish_reason, stop_reason,
                     kv_transfer_params, num_cached_tokens):
                 if req_state.queue is not None:
-                    print("D--: request output put into Output Collector queue: ", request_output)
                     # AsyncLLM: put into queue for handling by generate().
-                    # FIXME samit: debug to set 
                     req_state.queue.put(request_output)
                 else:
                     # LLMEngine: return list of RequestOutputs.
@@ -448,8 +440,6 @@ class OutputProcessor:
                     reqs_to_abort.append(req_id)
 
                 # Track per-request stats
-                # import pdb; pdb.set_trace()
-                print("D--: output procoessor update states from finish, reason: ", finish_reason)
                 self._update_stats_from_finished(req_state, finish_reason,
                                                  iteration_stats)
 
