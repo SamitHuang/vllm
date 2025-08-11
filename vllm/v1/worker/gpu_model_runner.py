@@ -486,6 +486,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                 num_computed_tokens=new_req_data.num_computed_tokens,
                 output_token_ids=[],
                 lora_request=new_req_data.lora_request,
+                prompt_embeds=new_req_data.prompt_embeds # Add prompt embedding support
             )
 
             # Only relevant for models using M-RoPE (e.g, Qwen2-VL)
@@ -1562,9 +1563,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
             mm_embeds = []
 
         # get prompt embedding if provided
-        print("D--: try gather prompt embedding")
         prompt_embeds = self._gather_prompt_embeddings(scheduler_output)
-        print("D--: ", prompt_embeds.shape)
 
         if self.supports_mm_inputs and get_pp_group().is_first_rank:
             if prompt_embeds is not None and prompt_embeds.shape[0] > 0:
