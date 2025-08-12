@@ -242,26 +242,6 @@ class AsyncLLM(EngineClient):
             raise EngineDeadError()
 
         is_pooling = isinstance(params, PoolingParams)
-        '''
-        # Create dummpy token IDs for prompt embedding if needed (similar to v0 engine)
-        # TODO: try delete it. We can just set dummy token IDs in EngineCore to avoid tranferring dummy data via socket
-        if (isinstance(prompt, dict)
-            and prompt.get("prompt_embeds", None) is not None
-            and prompt.get("prompt_token_ids", None)) is None:
-            # prompt_embeds must be (seq_len, hidden_size), but if the user
-            # passes in a batch of size 1, i.e. (1, seq_len, hidden_size),
-            # we can unambiguously process the intent by squeezing the batch
-            # dimension.
-            if prompt["prompt_embeds"].ndim == 3:
-                prompt["prompt_embeds"] = torch.squeeze(prompt["prompt_embeds"], dim=0)
-            prompt_embeds = prompt["prompt_embeds"]
-            if prompt_embeds.ndim == 2:  
-                seq_len = prompt_embeds.shape[0]
-            else:
-                raise ValueError(
-                    "prompt_embeds must be of shape (seq_len, hidden_size)")
-            prompt["prompt_token_ids"] = [0] * seq_len
-        '''
 
         # Create a new output collector for the request.
         queue = RequestOutputCollector(output_kind=params.output_kind)
