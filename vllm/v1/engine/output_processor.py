@@ -103,12 +103,14 @@ class RequestState:
         self.prompt = prompt
         self.prompt_embeds = prompt_embeds
         if prompt_embeds is not None and prompt_token_ids is None:
-            # Add support for prompt embedding. Create dummy token ids for RequestOutput 
+            # Add support for prompt embedding. Create dummy token ids for RequestOutput
             self.prompt_token_ids = [0] * prompt_embeds.shape[0]
         else:
             self.prompt_token_ids = prompt_token_ids
 
-        self.prompt_len = len(prompt_token_ids) if prompt_token_ids is not None else prompt_embeds.shape[0]
+        self.prompt_len = len(
+            prompt_token_ids
+        ) if prompt_token_ids is not None else prompt_embeds.shape[0]
         self.logprobs_processor = logprobs_processor
         self.detokenizer = detokenizer
         self.max_tokens_param = max_tokens_param
@@ -159,7 +161,7 @@ class RequestState:
             output_kind=output_kind,
             prompt=prompt,
             prompt_token_ids=request.prompt_token_ids,
-            prompt_embeds=request.prompt_embeds, 
+            prompt_embeds=request.prompt_embeds,
             logprobs_processor=logprobs_processor,
             detokenizer=detokenizer,
             max_tokens_param=max_tokens_param,
@@ -477,7 +479,9 @@ class OutputProcessor:
         assert req_state.stats is not None
         iteration_stats.update_from_finished_request(
             finish_reason=finish_reason,
-            num_prompt_tokens=len(req_state.prompt_token_ids) if req_state.prompt_token_ids is not None else req_state.prompt_embeds.shape[0],
+            num_prompt_tokens=len(req_state.prompt_token_ids)
+            if req_state.prompt_token_ids is not None else
+            req_state.prompt_embeds.shape[0],
             max_tokens_param=req_state.max_tokens_param,
             req_stats=req_state.stats)
         self.lora_states.finish_request(req_state)

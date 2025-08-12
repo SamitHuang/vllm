@@ -6,8 +6,6 @@ from collections.abc import AsyncGenerator, Mapping
 from copy import copy
 from typing import Any, Optional, Union
 
-import torch
-
 import numpy as np
 
 import vllm.envs as envs
@@ -435,7 +433,6 @@ class AsyncLLM(EngineClient):
                         # 3) Abort any reqs that finished due to stop strings.
                         await engine_core.abort_requests_async(
                             processed_outputs.reqs_to_abort)
-
 
                     # 4) Logging.
                     # TODO(rob): make into a coroutine and launch it in

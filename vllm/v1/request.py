@@ -3,8 +3,9 @@
 
 import enum
 import time
-import torch
 from typing import TYPE_CHECKING, Any, Optional, Union
+
+import torch
 
 from vllm.multimodal.inputs import MultiModalKwargs, PlaceholderRange
 from vllm.pooling_params import PoolingParams
@@ -22,22 +23,24 @@ if TYPE_CHECKING:
 class Request:
 
     def __init__(
-        self,
-        request_id: str,
-        prompt_token_ids: list[int],
-        multi_modal_inputs: Optional[list[MultiModalKwargs]],
-        multi_modal_hashes: Optional[list[str]],
-        multi_modal_placeholders: Optional[list[PlaceholderRange]],
-        sampling_params: Optional[SamplingParams],
-        pooling_params: Optional[PoolingParams],
-        eos_token_id: Optional[int],
-        client_index: int = 0,
-        arrival_time: Optional[float] = None,
-        lora_request: Optional["LoRARequest"] = None,
-        structured_output_request: Optional["StructuredOutputRequest"] = None,
-        cache_salt: Optional[str] = None,
-        priority: int = 0,
-        prompt_embeds: Optional[torch.Tensor] = None, # Add prompt embeddings support
+            self,
+            request_id: str,
+            prompt_token_ids: list[int],
+            multi_modal_inputs: Optional[list[MultiModalKwargs]],
+            multi_modal_hashes: Optional[list[str]],
+            multi_modal_placeholders: Optional[list[PlaceholderRange]],
+            sampling_params: Optional[SamplingParams],
+            pooling_params: Optional[PoolingParams],
+            eos_token_id: Optional[int],
+            client_index: int = 0,
+            arrival_time: Optional[float] = None,
+            lora_request: Optional["LoRARequest"] = None,
+            structured_output_request: Optional[
+                "StructuredOutputRequest"] = None,
+            cache_salt: Optional[str] = None,
+            priority: int = 0,
+            prompt_embeds: Optional[
+                torch.Tensor] = None,  # Add prompt embeddings support
     ) -> None:
         self.request_id = request_id
         self.client_index = client_index
@@ -85,18 +88,20 @@ class Request:
             if prompt_embeds.ndim == 3:
                 prompt_embeds = torch.squeeze(prompt_embeds, dim=0)
 
-            if prompt_embeds.ndim == 2:  
+            if prompt_embeds.ndim == 2:
                 seq_len = prompt_embeds.shape[0]
             else:
                 raise ValueError(
                     "prompt_embeds must be of shape (seq_len, hidden_size)")
             prompt_token_ids = [0] * seq_len
         self.prompt_token_ids = prompt_token_ids
-        self.num_prompt_tokens = len(self.prompt_token_ids) if self.prompt_token_ids else self.prompt_embeds.shape[0]
+        self.num_prompt_tokens = len(
+            self.prompt_token_ids
+        ) if self.prompt_token_ids else self.prompt_embeds.shape[0]
         self._output_token_ids: list[int] = []
 
         self._all_token_ids = self.prompt_token_ids.copy()
-            
+
         self.num_output_placeholders = 0  # Used in async scheduling.
         self.spec_token_ids: list[int] = []
         self.num_computed_tokens = 0
@@ -183,6 +188,7 @@ class Request:
         else:
         '''
         return len(self._all_token_ids) + len(self.spec_token_ids)
+
     @property
     def num_output_tokens(self) -> int:
         return len(self._output_token_ids)

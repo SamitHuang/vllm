@@ -284,7 +284,7 @@ class _AsyncLLMEngine(LLMEngine):
 
         # Clear outputs for each new scheduler iteration
         ctx.request_outputs.clear()
-        
+
         # skip the scheduler if there are any remaining steps in the seq groups.
         # This ensures that the scheduler is only called again when the current
         # batch has completed.

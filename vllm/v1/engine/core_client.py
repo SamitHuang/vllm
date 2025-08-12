@@ -815,7 +815,6 @@ class AsyncMPClient(MPClient):
         if engine is None:
             engine = self.core_engine
 
-        
         # import pdb; pdb.set_trace()
         message = (request_type.value, *self.encoder.encode(request))
         return self._send_input_message(message, engine, request)

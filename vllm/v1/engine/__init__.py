@@ -69,7 +69,7 @@ class EngineCoreRequest(
     # a wave finished notification is received.
     current_wave: int = 0
     priority: int = 0
-    prompt_embeds: Optional[torch.Tensor] = None 
+    prompt_embeds: Optional[torch.Tensor] = None
 
 
 class EngineCoreEventType(enum.IntEnum):

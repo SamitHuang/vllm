@@ -484,7 +484,7 @@ class InputPreprocessor:
         """
         parsed = parse_singleton_prompt(prompt)
 
-        # 
+        #
         if parsed["type"] == "embeds":
             return self._process_embeds(parsed["content"])
         if parsed["type"] == "tokens":

@@ -486,7 +486,8 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                 num_computed_tokens=new_req_data.num_computed_tokens,
                 output_token_ids=[],
                 lora_request=new_req_data.lora_request,
-                prompt_embeds=new_req_data.prompt_embeds # Add prompt embedding support
+                prompt_embeds=new_req_data.
+                prompt_embeds  # Add prompt embedding support
             )
 
             # Only relevant for models using M-RoPE (e.g, Qwen2-VL)
@@ -1202,7 +1203,9 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                 is_embed=pos_info.is_embed,
             )
 
-    def _gather_prompt_embeddings(self, scheduler_output: "SchedulerOutput") -> Optional[torch.Tensor]:
+    def _gather_prompt_embeddings(
+            self,
+            scheduler_output: "SchedulerOutput") -> Optional[torch.Tensor]:
         prompt_embeds_list: list[torch.Tensor] = []
         has_prompt_embeds = False
 
@@ -1210,34 +1213,41 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
             req_state = self.requests[req_id]
             if req_state.prompt_embeds is not None:
                 has_prompt_embeds = True
-                num_scheduled_tokens = scheduler_output.num_scheduled_tokens[req_id]
+                num_scheduled_tokens = scheduler_output.num_scheduled_tokens[
+                    req_id]
                 # For prompt embedding, we need to provide the embeddings for the current step.
                 # This is different from token IDs where we only provide new tokens
                 start_idx = req_state.num_computed_tokens
                 end_idx = req_state.num_prompt_tokens + num_scheduled_tokens
 
                 end_idx = min(end_idx, req_state.prompt_embeds.shape[0])
-                
+
                 if start_idx < end_idx:
-                    unprocessed_prompt_embeds = req_state.prompt_embeds[start_idx:end_idx]
-                    if unprocessed_prompt_embeds.device != self.device: 
-                        unprocessed_prompt_embeds = unprocessed_prompt_embeds.to(self.device, self.dtype, non_blocking=True)
+                    unprocessed_prompt_embeds = req_state.prompt_embeds[
+                        start_idx:end_idx]
+                    if unprocessed_prompt_embeds.device != self.device:
+                        unprocessed_prompt_embeds = unprocessed_prompt_embeds.to(
+                            self.device, self.dtype, non_blocking=True)
                     prompt_embeds_list.append(unprocessed_prompt_embeds)
-                    
+
                 else:
-                    prompt_embeds_list.append(torch.empty(0, req_state.prompt_embeds.shape[1], dtype=req_state.prompt_embeds.dtype, device=req_state.prompt_embeds.device))
+                    prompt_embeds_list.append(
+                        torch.empty(0,
+                                    req_state.prompt_embeds.shape[1],
+                                    dtype=req_state.prompt_embeds.dtype,
+                                    device=req_state.prompt_embeds.device))
             else:
-                prompt_embeds_list.append(torch.empty(0, dtype=self.dtype, device=self.device))
-        
+                prompt_embeds_list.append(
+                    torch.empty(0, dtype=self.dtype, device=self.device))
+
         if not has_prompt_embeds:
             return None
-        
+
         # Concatenate all prompt embeddings of input requests into batch tensor
         if prompt_embeds_list:
             return torch.cat(prompt_embeds_list, dim=0)
         else:
             return None
-
 
     def _gather_mm_embeddings(
         self,

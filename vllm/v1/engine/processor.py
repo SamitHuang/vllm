@@ -271,7 +271,7 @@ class Processor:
             processed_inputs=processed_inputs,
         )
         eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
-        
+
         self._validate_model_inputs(processed_inputs, lora_request)
 
         encoder_inputs, decoder_inputs = split_enc_dec_inputs(processed_inputs)
@@ -291,9 +291,8 @@ class Processor:
             sampling_params = params.clone()
             # If unset max tokens, then generate up to the max_model_len.
             if sampling_params.max_tokens is None:
-                sampling_params.max_tokens = (
-                    self.model_config.max_model_len -
-                    decoder_input_len)
+                sampling_params.max_tokens = (self.model_config.max_model_len -
+                                              decoder_input_len)
             sampling_params.update_from_generation_config(
                 self.generation_config_fields, eos_token_id)
             if self.tokenizer is not None:
@@ -391,17 +390,21 @@ class Processor:
         model_config = self.model_config
 
         prompt_ids = prompt_inputs.get("prompt_token_ids", None)
-            
+
         if prompt_inputs["type"] == 'embeds':
             if prompt_inputs["prompt_embeds"] is None:
-                raise ValueError(f"The prompt_embeds cannot be empty if prompt_type is 'embeds'")
+                raise ValueError(
+                    "The prompt_embeds cannot be empty if prompt_type is 'embeds'"
+                )
             prompt_len = len(prompt_inputs["prompt_embeds"])
         else:
-            if not prompt_ids:    
+            if not prompt_ids:
                 if prompt_type == "encoder" and model_config.is_multimodal_model:
                     pass  # Mllama may have empty encoder inputs for text-only data
                 else:
-                    raise ValueError(f"The {prompt_type} prompt cannot be empty if prompt_embeds is not provided")
+                    raise ValueError(
+                        f"The {prompt_type} prompt cannot be empty if prompt_embeds is not provided"
+                    )
             prompt_len = len(prompt_ids)
 
         if self.model_config.skip_tokenizer_init:

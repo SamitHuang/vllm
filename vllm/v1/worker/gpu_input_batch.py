@@ -43,10 +43,11 @@ class CachedRequestState:
     mrope_position_delta: Optional[int] = None
 
     lora_request: Optional[LoRARequest] = None
-    prompt_embeds: Optional[torch.Tensor] = None  # Add support for prompt embeddings
+    prompt_embeds: Optional[
+        torch.Tensor] = None  # Add support for prompt embeddings
 
     def __post_init__(self):
-        # prompt_token_ids are dummpy 0s if use prompt_embeds 
+        # prompt_token_ids are dummpy 0s if use prompt_embeds
         # if self.prompt_embeds is not None:
         #     self.num_prompt_tokens = self.prompt_embeds.shape[0] if self.prompt_embeds.dim() >=1 else 1
         # else:
@@ -59,7 +60,9 @@ class CachedRequestState:
     def get_token_id(self, idx: int) -> int:
         if idx < self.num_prompt_tokens:
             if self.prompt_embeds is not None and self.num_prompt_tokens is None:
-                raise NotImplementedError("The token id for input prompt is dummpy 0 when using prompt_embeds (--enable-prompt-embeds)")
+                raise NotImplementedError(
+                    "The token id for input prompt is dummpy 0 when using prompt_embeds (--enable-prompt-embeds)"
+                )
             else:
                 return self.prompt_token_ids[idx]
         else:
@@ -707,7 +710,7 @@ class InputBatch:
             prompt_token_ids[i, self.num_prompt_tokens[i]:] = self.vocab_size
         return prompt_token_ids_cpu_tensor.to(device=self.device,
                                               non_blocking=True)
-    
+
     def make_lora_inputs(
         self, num_scheduled_tokens: np.ndarray
     ) -> tuple[tuple[int, ...], tuple[int, ...], set[LoRARequest]]:
