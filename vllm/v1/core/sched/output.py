@@ -6,6 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
+import torch
+
 if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
@@ -32,6 +34,7 @@ class NewRequestData:
     block_ids: tuple[list[int], ...]
     num_computed_tokens: int
     lora_request: Optional[LoRARequest]
+    prompt_embeds: Optional[torch.Tensor]
 
     @classmethod
     def from_request(
@@ -50,6 +53,7 @@ class NewRequestData:
             block_ids=block_ids,
             num_computed_tokens=request.num_computed_tokens,
             lora_request=request.lora_request,
+            prompt_embeds=request.prompt_embeds,
         )
 
     def __repr__(self):
@@ -67,17 +71,18 @@ class NewRequestData:
 
     # Version of __repr__ with the prompt data obfuscated
     def anon_repr(self):
-        return (f"NewRequestData("
-                f"req_id={self.req_id},"
-                f"prompt_token_ids_len={len(self.prompt_token_ids)},"
-                f"mm_inputs={self.mm_inputs},"
-                f"mm_hashes={self.mm_hashes},"
-                f"mm_positions={self.mm_positions},"
-                f"sampling_params={self.sampling_params},"
-                f"block_ids={self.block_ids},"
-                f"num_computed_tokens={self.num_computed_tokens},"
-                f"lora_request={self.lora_request}"
-                ")")
+        return (
+            f"NewRequestData("
+            f"req_id={self.req_id},"
+            f"prompt_token_ids_len={len(self.prompt_token_ids) if self.prompt_token_ids is not None else self.prompt_embeds.shape[0]},"
+            f"mm_inputs={self.mm_inputs},"
+            f"mm_hashes={self.mm_hashes},"
+            f"mm_positions={self.mm_positions},"
+            f"sampling_params={self.sampling_params},"
+            f"block_ids={self.block_ids},"
+            f"num_computed_tokens={self.num_computed_tokens},"
+            f"lora_request={self.lora_request}"
+            ")")
 
 
 @dataclass
