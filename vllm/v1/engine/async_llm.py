@@ -274,7 +274,6 @@ class AsyncLLM(EngineClient):
         # Add the request to OutputProcessor (this process).
         self.output_processor.add_request(request, prompt, parent_req, index,
                                           queue)
-
         # Add the EngineCoreRequest to EngineCore (separate process).
         await self.engine_core.add_request_async(request)
 
@@ -310,7 +309,6 @@ class AsyncLLM(EngineClient):
         The caller of generate() iterates the returned AsyncGenerator,
         returning the RequestOutput back to the caller.
         """
-
         try:
             # We start the output_handler on the first call to generate() so
             # we can call __init__ before the event loop, which enables us
@@ -468,6 +466,7 @@ class AsyncLLM(EngineClient):
             # We start the output_handler on the first call to generate() so
             # we can call __init__ before the event loop, which enables us
             # to handle startup failure gracefully in the OpenAI server.
+
             self._run_output_handler()
 
             q = await self.add_request(

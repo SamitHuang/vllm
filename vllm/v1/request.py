@@ -5,6 +5,8 @@ import enum
 import time
 from typing import TYPE_CHECKING, Any, Optional, Union
 
+import torch
+
 from vllm.multimodal.inputs import MultiModalKwargs, PlaceholderRange
 from vllm.pooling_params import PoolingParams
 from vllm.sampling_params import SamplingParams
@@ -21,21 +23,24 @@ if TYPE_CHECKING:
 class Request:
 
     def __init__(
-        self,
-        request_id: str,
-        prompt_token_ids: list[int],
-        multi_modal_inputs: Optional[list[MultiModalKwargs]],
-        multi_modal_hashes: Optional[list[str]],
-        multi_modal_placeholders: Optional[list[PlaceholderRange]],
-        sampling_params: Optional[SamplingParams],
-        pooling_params: Optional[PoolingParams],
-        eos_token_id: Optional[int],
-        client_index: int = 0,
-        arrival_time: Optional[float] = None,
-        lora_request: Optional["LoRARequest"] = None,
-        structured_output_request: Optional["StructuredOutputRequest"] = None,
-        cache_salt: Optional[str] = None,
-        priority: int = 0,
+            self,
+            request_id: str,
+            prompt_token_ids: list[int],
+            multi_modal_inputs: Optional[list[MultiModalKwargs]],
+            multi_modal_hashes: Optional[list[str]],
+            multi_modal_placeholders: Optional[list[PlaceholderRange]],
+            sampling_params: Optional[SamplingParams],
+            pooling_params: Optional[PoolingParams],
+            eos_token_id: Optional[int],
+            client_index: int = 0,
+            arrival_time: Optional[float] = None,
+            lora_request: Optional["LoRARequest"] = None,
+            structured_output_request: Optional[
+                "StructuredOutputRequest"] = None,
+            cache_salt: Optional[str] = None,
+            priority: int = 0,
+            prompt_embeds: Optional[
+                torch.Tensor] = None,  # Add prompt embeddings support
     ) -> None:
         self.request_id = request_id
         self.client_index = client_index
@@ -48,6 +53,7 @@ class Request:
         self.structured_output_request = structured_output_request
         self.arrival_time = arrival_time if arrival_time is not None else \
             time.time()
+        self.prompt_embeds = prompt_embeds
 
         self.status = RequestStatus.WAITING
         if sampling_params and sampling_params.guided_decoding is not None:
@@ -73,10 +79,29 @@ class Request:
             raise ValueError(
                 "sampling_params and pooling_params can't both be unset")
 
+        # Create dummpy token IDs for prompt embedding if needed (similar to v0 engine)
+        if prompt_embeds is not None and prompt_token_ids is None:
+            # prompt_embeds must be (seq_len, hidden_size), but if the user
+            # passes in a batch of size 1, i.e. (1, seq_len, hidden_size),
+            # we can unambiguously process the intent by squeezing the batch
+            # dimension.
+            if prompt_embeds.ndim == 3:
+                prompt_embeds = torch.squeeze(prompt_embeds, dim=0)
+
+            if prompt_embeds.ndim == 2:
+                seq_len = prompt_embeds.shape[0]
+            else:
+                raise ValueError(
+                    "prompt_embeds must be of shape (seq_len, hidden_size)")
+            prompt_token_ids = [0] * seq_len
         self.prompt_token_ids = prompt_token_ids
-        self.num_prompt_tokens = len(self.prompt_token_ids)
+        self.num_prompt_tokens = len(
+            self.prompt_token_ids
+        ) if self.prompt_token_ids else self.prompt_embeds.shape[0]
         self._output_token_ids: list[int] = []
-        self._all_token_ids: list[int] = self.prompt_token_ids.copy()
+
+        self._all_token_ids = self.prompt_token_ids.copy()
+
         self.num_output_placeholders = 0  # Used in async scheduling.
         self.spec_token_ids: list[int] = []
         self.num_computed_tokens = 0
@@ -132,6 +157,7 @@ class Request:
                     if request.sampling_params else None,
             cache_salt=request.cache_salt,
             priority=request.priority,
+            prompt_embeds=request.prompt_embeds,
         )
 
     def append_output_token_ids(
@@ -155,6 +181,12 @@ class Request:
 
     @property
     def num_tokens_with_spec(self) -> int:
+        '''
+        if self.prompt_embeds is not None and self.prompt_token_ids is None:
+            prompt_length = self.prompt_embeds.shape[0] if self.prompt_embeds.dim() >= 1 else 1
+            return prompt_length + len(self._output_token_ids) + len(self.spec_token_ids)
+        else:
+        '''
         return len(self._all_token_ids) + len(self.spec_token_ids)
 
     @property

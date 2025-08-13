@@ -487,6 +487,8 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                 num_computed_tokens=new_req_data.num_computed_tokens,
                 output_token_ids=[],
                 lora_request=new_req_data.lora_request,
+                prompt_embeds=new_req_data.
+                prompt_embeds  # Add prompt embedding support
             )
 
             # Only relevant for models using M-RoPE (e.g, Qwen2-VL)
@@ -1205,6 +1207,52 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                 is_embed=pos_info.is_embed,
             )
 
+    def _gather_prompt_embeddings(
+            self,
+            scheduler_output: "SchedulerOutput") -> Optional[torch.Tensor]:
+        prompt_embeds_list: list[torch.Tensor] = []
+        has_prompt_embeds = False
+
+        for i, req_id in enumerate(self.input_batch.req_ids):
+            req_state = self.requests[req_id]
+            if req_state.prompt_embeds is not None:
+                has_prompt_embeds = True
+                num_scheduled_tokens = scheduler_output.num_scheduled_tokens[
+                    req_id]
+                # For prompt embedding, we need to provide the embeddings for the current step.
+                # This is different from token IDs where we only provide new tokens
+                start_idx = req_state.num_computed_tokens
+                end_idx = req_state.num_prompt_tokens + num_scheduled_tokens
+
+                end_idx = min(end_idx, req_state.prompt_embeds.shape[0])
+
+                if start_idx < end_idx:
+                    unprocessed_prompt_embeds = req_state.prompt_embeds[
+                        start_idx:end_idx]
+                    if unprocessed_prompt_embeds.device != self.device:
+                        unprocessed_prompt_embeds = unprocessed_prompt_embeds.to(
+                            self.device, self.dtype, non_blocking=True)
+                    prompt_embeds_list.append(unprocessed_prompt_embeds)
+
+                else:
+                    prompt_embeds_list.append(
+                        torch.empty(0,
+                                    req_state.prompt_embeds.shape[1],
+                                    dtype=req_state.prompt_embeds.dtype,
+                                    device=req_state.prompt_embeds.device))
+            else:
+                prompt_embeds_list.append(
+                    torch.empty(0, dtype=self.dtype, device=self.device))
+
+        if not has_prompt_embeds:
+            return None
+
+        # Concatenate all prompt embeddings of input requests into batch tensor
+        if prompt_embeds_list:
+            return torch.cat(prompt_embeds_list, dim=0)
+        else:
+            return None
+
     def _gather_mm_embeddings(
         self,
         scheduler_output: "SchedulerOutput",
@@ -1538,32 +1586,46 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
         else:
             mm_embeds = []
 
+        # get prompt embedding if provided
+        prompt_embeds = self._gather_prompt_embeddings(scheduler_output)
+
         if self.supports_mm_inputs and get_pp_group().is_first_rank:
-            # NOTE(woosuk): To unify token ids and soft tokens (vision
-            # embeddings), we always use embeddings (rather than token ids)
-            # as input to the multimodal model, even when the input is text.
-            inputs_embeds_scheduled = self.model.get_input_embeddings(
-                input_ids=self.input_ids[:num_scheduled_tokens],
-                multimodal_embeddings=mm_embeds or None,
-            )
+            if prompt_embeds is not None and prompt_embeds.shape[0] > 0:
+                # in prefill stage, we have prompt embedding
+                inputs_embeds = prompt_embeds
+                input_ids = None
+            else:
+                # NOTE(woosuk): To unify token ids and soft tokens (vision
+                # embeddings), we always use embeddings (rather than token ids)
+                # as input to the multimodal model, even when the input is text.
+                inputs_embeds_scheduled = self.model.get_input_embeddings(
+                    input_ids=self.input_ids[:num_scheduled_tokens],
+                    multimodal_embeddings=mm_embeds or None,
+                )
 
-            # TODO(woosuk): Avoid the copy. Optimize.
-            self.inputs_embeds[:num_scheduled_tokens].copy_(
-                inputs_embeds_scheduled)
+                # TODO(woosuk): Avoid the copy. Optimize.
+                self.inputs_embeds[:num_scheduled_tokens].copy_(
+                    inputs_embeds_scheduled)
 
-            input_ids = None
-            inputs_embeds = self.inputs_embeds[:num_input_tokens]
+                input_ids = None
+                inputs_embeds = self.inputs_embeds[:num_input_tokens]
             model_mm_kwargs = self._extract_mm_kwargs(scheduler_output)
             model_kwargs = self._init_model_kwargs(num_scheduled_tokens)
         else:
-            # For text-only models, we use token ids as input.
-            # While it is possible to use embeddings as input just like the
-            # multimodal models, it is not desirable for performance since
-            # then the embedding layer is not included in the CUDA graph.
-            input_ids = self.input_ids[:num_input_tokens]
+            if prompt_embeds is not None and prompt_embeds.shape[0] > 0:
+                # in prefill stage, we have prompt embedding
+                inputs_embeds = prompt_embeds
+                input_ids = None
+            else:
+                # For text-only models, we use token ids as input.
+                # While it is possible to use embeddings as input just like the
+                # multimodal models, it is not desirable for performance since
+                # then the embedding layer is not included in the CUDA graph.
+                input_ids = self.input_ids[:num_input_tokens]
+                inputs_embeds = None
             model_kwargs = self._init_model_kwargs(num_input_tokens)
-            inputs_embeds = None
             model_mm_kwargs = {}
+
         if self.uses_mrope:
             positions = self.mrope_positions[:, :num_input_tokens]
         else:

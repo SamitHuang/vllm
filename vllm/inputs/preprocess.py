@@ -484,6 +484,7 @@ class InputPreprocessor:
         """
         parsed = parse_singleton_prompt(prompt)
 
+        #
         if parsed["type"] == "embeds":
             return self._process_embeds(parsed["content"])
         if parsed["type"] == "tokens":
@@ -809,7 +810,6 @@ class InputPreprocessor:
             lora_request=lora_request,
             return_mm_hashes=return_mm_hashes,
         )
-
         return self._build_decoder_only_llm_inputs(prompt_comps)
 
     async def _process_decoder_only_prompt_async(

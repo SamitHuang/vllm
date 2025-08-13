@@ -43,8 +43,14 @@ class CachedRequestState:
     mrope_position_delta: Optional[int] = None
 
     lora_request: Optional[LoRARequest] = None
+    prompt_embeds: Optional[
+        torch.Tensor] = None  # Add support for prompt embeddings
 
     def __post_init__(self):
+        # prompt_token_ids are dummpy 0s if use prompt_embeds
+        # if self.prompt_embeds is not None:
+        #     self.num_prompt_tokens = self.prompt_embeds.shape[0] if self.prompt_embeds.dim() >=1 else 1
+        # else:
         self.num_prompt_tokens = len(self.prompt_token_ids)
 
     @property
@@ -53,7 +59,12 @@ class CachedRequestState:
 
     def get_token_id(self, idx: int) -> int:
         if idx < self.num_prompt_tokens:
-            return self.prompt_token_ids[idx]
+            if self.prompt_embeds is not None and self.num_prompt_tokens is None:
+                raise NotImplementedError(
+                    "The token id for input prompt is dummpy 0 when using prompt_embeds (--enable-prompt-embeds)"
+                )
+            else:
+                return self.prompt_token_ids[idx]
         else:
             return self.output_token_ids[idx - self.num_prompt_tokens]
 
