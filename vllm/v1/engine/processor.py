@@ -262,7 +262,6 @@ class Processor:
             return_mm_hashes=return_mm_hashes,
         )
 
-        # from non prompt_embed, processed_inputs = {"prompt_token_ids": tensors(...), ...}
         from vllm.platforms import current_platform
 
         current_platform.validate_request(

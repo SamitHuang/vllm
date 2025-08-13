@@ -181,12 +181,6 @@ class Request:
 
     @property
     def num_tokens_with_spec(self) -> int:
-        '''
-        if self.prompt_embeds is not None and self.prompt_token_ids is None:
-            prompt_length = self.prompt_embeds.shape[0] if self.prompt_embeds.dim() >= 1 else 1
-            return prompt_length + len(self._output_token_ids) + len(self.spec_token_ids)
-        else:
-        '''
         return len(self._all_token_ids) + len(self.spec_token_ids)
 
     @property
