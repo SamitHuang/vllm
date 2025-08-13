@@ -47,10 +47,6 @@ class CachedRequestState:
         torch.Tensor] = None  # Add support for prompt embeddings
 
     def __post_init__(self):
-        # prompt_token_ids are dummpy 0s if use prompt_embeds
-        # if self.prompt_embeds is not None:
-        #     self.num_prompt_tokens = self.prompt_embeds.shape[0] if self.prompt_embeds.dim() >=1 else 1
-        # else:
         self.num_prompt_tokens = len(self.prompt_token_ids)
 
     @property
