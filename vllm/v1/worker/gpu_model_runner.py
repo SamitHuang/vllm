@@ -198,6 +198,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
         # Request states.
         self.requests: dict[str, CachedRequestState] = {}
 
+        print("D--: model runner init: InputBatch")
         # Input Batch
         # NOTE(Chen): Ideally, we should initialize the input batch inside
         # `initialize_kv_cache` based on the kv cache config. However, as in
@@ -207,16 +208,26 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
         # solution, we initialize the input batch here, and re-initialize it
         # in `initialize_kv_cache` if the block_sizes here is different from
         # the block_sizes in the kv cache config.
-        self.input_batch = InputBatch(
-            max_num_reqs=self.max_num_reqs,
-            max_model_len=self.max_model_len,
-            max_num_batched_tokens=self.max_num_tokens,
-            device=self.device,
-            pin_memory=self.pin_memory,
-            vocab_size=self.model_config.get_vocab_size(),
-            block_sizes=[self.cache_config.block_size],
-            is_spec_decode=bool(self.vllm_config.speculative_config),
-        )
+        
+        # FIXME: debugging, try to move InputBatch to kv initializa 
+        enable_prompt_embeds = getattr(self.model_config, "enable_prompt_embeds", False)
+        if not enable_prompt_embeds:
+            # FIXME: input_batch hanging for prompt embedding mode offline inference
+            self.input_batch = InputBatch(
+                max_num_reqs=self.max_num_reqs,
+                max_model_len=self.max_model_len,
+                max_num_batched_tokens=self.max_num_tokens,
+                device=self.device,
+                pin_memory=self.pin_memory,
+                vocab_size=self.model_config.get_vocab_size(),
+                block_sizes=[self.cache_config.block_size],
+                is_spec_decode=bool(self.vllm_config.speculative_config),
+                enable_prompt_embeds=enable_prompt_embeds,
+            )
+        else:
+            self.input_batch = None 
+            
+        print("D--: model runner init: InputBatch done")
 
         self.use_cuda_graph = (
             self.vllm_config.compilation_config.level
@@ -231,6 +242,8 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
             reversed(self.compilation_config.cudagraph_capture_sizes))
 
         self.full_cuda_graph = self.compilation_config.full_cuda_graph
+
+        print("D--: model runner init: init device property")
 
         # Cache the device properties.
         self._init_device_properties()
@@ -325,6 +338,8 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
         if self.cache_config.kv_sharing_fast_prefill:
             self.kv_sharing_fast_prefill_logits_indices = torch.zeros(
                 self.max_num_tokens, dtype=torch.int32, device=self.device)
+
+        print("D--: model runner init: mm budget")
 
         self.mm_budget = (MultiModalBudget(
             self.model_config,
@@ -2829,7 +2844,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
             kv_cache_group.kv_cache_spec.block_size
             for kv_cache_group in kv_cache_config.kv_cache_groups
         ]
-        if block_sizes != [self.cache_config.block_size]:
+        if (self.input_batch is None) or (block_sizes != [self.cache_config.block_size]):
             assert self.cache_config.cpu_offload_gb == 0, (
                 "Cannot re-initialize the input batch when CPU weight "
                 "offloading is enabled. See https://github.com/vllm-project/vllm/pull/18298 "  # noqa: E501
@@ -2843,6 +2858,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                 vocab_size=self.model_config.get_vocab_size(),
                 block_sizes=block_sizes,
                 is_spec_decode=bool(self.vllm_config.speculative_config),
+                enable_prompt_embeds=getattr(self.model_config, "enable_prompt_embeds", False),
             )
 
     def _allocate_kv_cache_tensors(

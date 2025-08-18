@@ -487,6 +487,7 @@ class LLMEngine:
             from vllm.v1.engine.llm_engine import LLMEngine as V1LLMEngine
             engine_cls = V1LLMEngine
 
+        import pdb; pdb.set_trace()
         return engine_cls.from_vllm_config(
             vllm_config=vllm_config,
             usage_context=usage_context,

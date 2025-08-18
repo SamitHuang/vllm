@@ -75,13 +75,16 @@ class EngineCore:
         self.log_stats = log_stats
 
         # Setup Model.
+        print("D--: trying to setup model", executor_class, vllm_config)
         self.model_executor = executor_class(vllm_config)
+        print("D--: done setup model", executor_fail_callback)
         if executor_fail_callback is not None:
             self.model_executor.register_failure_callback(
                 executor_fail_callback)
 
         self.available_gpu_memory_for_kv_cache = -1
 
+        print("D--: trying to setup kvc") 
         # Setup KV Caches and update CacheConfig after profiling.
         num_gpu_blocks, num_cpu_blocks, kv_cache_config = \
             self._initialize_kv_caches(vllm_config)
@@ -624,6 +627,8 @@ class EngineCoreProc(EngineCore):
         init_bytes = handshake_socket.recv()
         init_message: EngineHandshakeMetadata = msgspec.msgpack.decode(
             init_bytes, type=EngineHandshakeMetadata)
+        
+        print("D--: Received init message: ", init_message)
         logger.debug("Received init message: %s", init_message)
 
         if parallel_config is not None:

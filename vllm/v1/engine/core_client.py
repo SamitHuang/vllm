@@ -66,6 +66,7 @@ class EngineCoreClient(ABC):
         log_stats: bool,
     ) -> "EngineCoreClient":
 
+        import pdb; pdb.set_trace()
         # TODO: support this for debugging purposes.
         if asyncio_mode and not multiprocess_mode:
             raise NotImplementedError(
@@ -416,6 +417,7 @@ class MPClient(EngineCoreClient):
                 self.stats_update_address = client_addresses.get(
                     "stats_update_address")
             else:
+                import pdb; pdb.set_trace()
                 # Engines are managed by this client.
                 with launch_core_engines(vllm_config, executor_class,
                                          log_stats) as (engine_manager,

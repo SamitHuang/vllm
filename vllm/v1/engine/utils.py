@@ -579,6 +579,7 @@ def launch_core_engines(
 ]]:
     """Launch engine and DP coordinator processes as needed."""
 
+    import pdb; pdb.set_trace()
     parallel_config = vllm_config.parallel_config
     dp_size = parallel_config.data_parallel_size
     local_engine_count = parallel_config.data_parallel_size_local
@@ -801,6 +802,8 @@ def wait_for_engine_startup(
                         "data_parallel_size":
                         parallel_config.data_parallel_size,
                     }))
+            # D--: after sending the init_message, the process hanging
+            import pdb; pdb.set_trace()
             handshake_socket.send_multipart((eng_identity, init_message),
                                             copy=False)
             conn_pending[0 if local else 1] -= 1

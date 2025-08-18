@@ -77,7 +77,10 @@ class InputBatch:
         vocab_size: int,
         block_sizes: list[int],  # The block_size of each kv cache group
         is_spec_decode: bool = False,
+        enable_prompt_embeds: bool = False,
     ):
+        print("D--: InputBatch -> beign ")
+
         self.is_spec_decode = is_spec_decode
         self.max_num_reqs = max_num_reqs
         self.max_model_len = max_model_len
@@ -85,6 +88,7 @@ class InputBatch:
         self.device = device
         self.pin_memory = pin_memory
         self.vocab_size = vocab_size
+        self.enable_prompt_embeds = enable_prompt_embeds
 
         self._req_ids: list[Optional[str]] = []
         self.req_id_to_index: dict[str, int] = {}
@@ -93,13 +97,27 @@ class InputBatch:
         # Find a way to reduce the CPU memory usage.
         # This buffer is not directly transferred to the GPU, so it does not
         # need to be pinned.
-        self.token_ids_cpu_tensor = torch.zeros(
-            (max_num_reqs, max_model_len),
-            device="cpu",
-            dtype=torch.int32,
-            pin_memory=False,
-        )
-        self.token_ids_cpu = self.token_ids_cpu_tensor.numpy()
+
+        if not enable_prompt_embeds:
+            # Not need to init token ids cpu for prompt embeddging
+            print("D--: InputBatch -> token ids", max_num_reqs, max_model_len)
+
+            self.token_ids_cpu_tensor = torch.zeros(
+                (max_num_reqs, max_model_len),
+                device="cpu",
+                dtype=torch.int32,
+                pin_memory=False,
+            )
+            print("D--: InputBatch -> token ids cpu")
+            self.token_ids_cpu = self.token_ids_cpu_tensor.numpy()
+            self.num_tokens = np.zeros(max_num_reqs, dtype=np.int32)
+            self.num_tokens_no_spec = np.zeros(max_num_reqs, dtype=np.int32)
+            self.num_prompt_tokens = np.zeros(max_num_reqs, dtype=np.int32)
+            print("D--: InputBatch -> computed tokens")
+        else:
+            self.token_ids_cpu_tensor = None
+            self.token_ids_cpu = None
+
         self.num_tokens = np.zeros(max_num_reqs, dtype=np.int32)
         self.num_tokens_no_spec = np.zeros(max_num_reqs, dtype=np.int32)
         self.num_prompt_tokens = np.zeros(max_num_reqs, dtype=np.int32)
@@ -112,6 +130,7 @@ class InputBatch:
         self.num_computed_tokens_cpu = \
             self.num_computed_tokens_cpu_tensor.numpy()
 
+        print("D--: InputBatch -> MultiGroupBlocktalble ")
         # Block table.
         self.block_table = MultiGroupBlockTable(
             max_num_reqs=max_num_reqs,
@@ -121,6 +140,19 @@ class InputBatch:
             device=device,
             block_sizes=block_sizes,
         )
+
+        '''
+            # delay init block table
+            self.block_table = None
+            self._block_table_config = dict(
+                max_num_reqs=max_num_reqs,
+                max_model_len=max_model_len,
+                max_num_batched_tokens=max_num_batched_tokens,
+                pin_memory=pin_memory,
+                device=device,
+                block_sizes=block_sizes,
+            )
+        '''
 
         # Sampling-related.
         self.temperature = torch.empty((max_num_reqs, ),
@@ -214,10 +246,13 @@ class InputBatch:
         # To accumulate prompt logprobs tensor chunks across prefill steps.
         self.in_progress_prompt_logprobs_cpu: dict[str, LogprobsTensors] = {}
 
+        print("D--: InputBatch -> BatchUpdateBuilder starts")
         # Internal representation of per-step batch state changes, used for
         # reordering persistent batch and generating logitsprocs batch state
         # updates. Should reset each step.
         self.batch_update_builder = BatchUpdateBuilder()
+
+        print("D--: InputBatch ->  init logits starts")
 
         # Define logits processors.
         # TODO(andy): logits processor list should be extensible via engine
@@ -289,12 +324,13 @@ class InputBatch:
         # Copy the prompt token ids and output token ids.
         num_prompt_tokens = len(request.prompt_token_ids)
         self.num_prompt_tokens[req_index] = num_prompt_tokens
-        self.token_ids_cpu[
-            req_index, :num_prompt_tokens] = request.prompt_token_ids
-        start_idx = num_prompt_tokens
-        end_idx = start_idx + len(request.output_token_ids)
-        self.token_ids_cpu[req_index,
-                           start_idx:end_idx] = request.output_token_ids
+        if self.token_ids_cpu is not None:
+            self.token_ids_cpu[
+                req_index, :num_prompt_tokens] = request.prompt_token_ids
+            start_idx = num_prompt_tokens
+            end_idx = start_idx + len(request.output_token_ids)
+            self.token_ids_cpu[req_index,
+                            start_idx:end_idx] = request.output_token_ids
         # Number of token ids in token_ids_cpu.
         # NOTE(woosuk): This may include spec decode tokens.
         self.num_tokens[req_index] = request.num_tokens
@@ -302,7 +338,8 @@ class InputBatch:
         self.num_tokens_no_spec[req_index] = request.num_tokens
 
         self.num_computed_tokens_cpu[req_index] = request.num_computed_tokens
-        self.block_table.add_row(request.block_ids, req_index)
+        if self.block_table is not None:
+            self.block_table.add_row(request.block_ids, req_index)
 
         if sampling_params := request.sampling_params:
             if (self.is_spec_decode
@@ -481,9 +518,10 @@ class InputBatch:
         #     self.token_ids_cpu[i2, ...], self.token_ids_cpu[i1, ...]
         # instead, we need to temporiarily copy the data for one of the indices
         # TODO(lucas): optimize this by only copying valid indices
-        tmp = self.token_ids_cpu[i1, ...].copy()
-        self.token_ids_cpu[i1, ...] = self.token_ids_cpu[i2, ...]
-        self.token_ids_cpu[i2, ...] = tmp
+        if self.token_ids_cpu is not None:
+            tmp = self.token_ids_cpu[i1, ...].copy()
+            self.token_ids_cpu[i1, ...] = self.token_ids_cpu[i2, ...]
+            self.token_ids_cpu[i2, ...] = tmp
 
         swap_dict_values(self.generators, i1, i2)
         swap_dict_values(self.bad_words_token_ids, i1, i2)
@@ -496,7 +534,8 @@ class InputBatch:
                 self.allowed_token_ids_mask_cpu_tensor[i2] =\
                 self.allowed_token_ids_mask_cpu_tensor[i2], \
                     self.allowed_token_ids_mask_cpu_tensor[i1]
-        self.block_table.swap_row(i1, i2)
+        if self.block_table is not None:
+            self.block_table.swap_row(i1, i2)
 
     def condense(self) -> None:
         """Slide non-empty requests down into lower, empty indices.
@@ -552,8 +591,9 @@ class InputBatch:
             self.req_id_to_index[req_id] = empty_index
 
             num_tokens = self.num_tokens[last_req_index]
-            self.token_ids_cpu[empty_index, :num_tokens] = self.token_ids_cpu[
-                last_req_index, :num_tokens]
+            if self.token_ids_cpu is not None:
+                self.token_ids_cpu[empty_index, :num_tokens] = self.token_ids_cpu[
+                    last_req_index, :num_tokens]
             self.num_tokens[empty_index] = num_tokens
             self.num_tokens_no_spec[empty_index] = self.num_tokens_no_spec[
                 last_req_index]
@@ -561,7 +601,10 @@ class InputBatch:
                 last_req_index]
             self.num_computed_tokens_cpu[
                 empty_index] = self.num_computed_tokens_cpu[last_req_index]
-            self.block_table.move_row(last_req_index, empty_index)
+            
+            if self.block_table is not None:
+                self.block_table.move_row(last_req_index, empty_index)
+
             self.temperature_cpu[empty_index] = self.temperature_cpu[
                 last_req_index]
             self.top_p_cpu[empty_index] = self.top_p_cpu[last_req_index]
@@ -635,6 +678,9 @@ class InputBatch:
         needs_prompt_token_ids = (
             not self.no_penalties
             or self.logits_processing_needs_token_ids[:num_reqs].any())
+        
+        if self.enable_prompt_embeds:
+            needs_prompt_token_ids = False
         if needs_prompt_token_ids:
             # The prompt tokens are used only for applying penalties or
             # step pooling during the sampling/pooling process.
@@ -690,6 +736,9 @@ class InputBatch:
         )
 
     def _make_prompt_token_ids_tensor(self) -> torch.Tensor:
+        if self.token_ids_cpu is None:
+            raise NotImplementedError("This method should not be called when using prompt embedding")
+
         max_prompt_len = self.num_prompt_tokens[:self.num_reqs].max()
         prompt_token_ids_cpu_tensor = torch.empty(
             (self.num_reqs, max_prompt_len),

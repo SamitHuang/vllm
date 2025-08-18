@@ -188,6 +188,7 @@ class Worker(WorkerBase):
         else:
             raise RuntimeError(
                 f"Not support device type: {self.device_config.device}")
+        print("D--: init_device, start init worker")
         # Initialize the distributed environment.
         init_worker_distributed_environment(self.vllm_config, self.rank,
                                             self.distributed_init_method,
@@ -196,6 +197,7 @@ class Worker(WorkerBase):
         # Set random seed.
         set_random_seed(self.model_config.seed)
 
+        print("D--: init_device, init gpu model runner")
         # Construct the model runner
         self.model_runner: GPUModelRunner = GPUModelRunner(
             self.vllm_config, self.device)
@@ -203,6 +205,7 @@ class Worker(WorkerBase):
         if self.rank == 0:
             # If usage stat is enabled, collect relevant info.
             report_usage_stats(self.vllm_config)
+        print("D--: init_device, end gpu model runner")
 
     # FIXME(youkaichao & ywang96): Use TorchDispatchMode instead of memory pool
     # to hijack tensor allocation.

@@ -101,6 +101,7 @@ class LLMEngine:
                                                 log_stats=self.log_stats)
 
         # EngineCore (gets EngineCoreRequests and gives EngineCoreOutputs)
+        import pdb; pdb.set_trace()
         self.engine_core = EngineCoreClient.make_client(
             multiprocess_mode=multiprocess_mode,
             asyncio_mode=False,
