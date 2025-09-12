@@ -57,6 +57,93 @@ Join us at the [PyTorch Conference, October 22-23](https://events.linuxfoundatio
 
 ---
 
+```
+============ Serving Benchmark Result ============
+Successful requests:                     1000
+Benchmark duration (s):                  151.32
+Total input tokens:                      100608
+Total generated tokens:                  127697
+Request throughput (req/s):              6.61
+Output token throughput (tok/s):         843.87
+Total Token throughput (tok/s):          1508.72
+---------------Time to First Token----------------
+Mean TTFT (ms):                          66172.22
+Median TTFT (ms):                        56837.92
+P99 TTFT (ms):                           144176.81
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          238.06
+Median TPOT (ms):                        265.18
+P99 TPOT (ms):                           369.99
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           240.68
+Median ITL (ms):                         241.09
+P99 ITL (ms):                            2159.38
+==================================================
+
+```
+
+```
+============ Serving Benchmark Result ============
+Successful requests:                     1000
+Benchmark duration (s):                  152.42
+Total input tokens:                      100608
+Total generated tokens:                  127700
+Request throughput (req/s):              6.56
+Output token throughput (tok/s):         837.80
+Total Token throughput (tok/s):          1497.85
+---------------Time to First Token----------------
+Mean TTFT (ms):                          66791.51
+Median TTFT (ms):                        55423.42
+P99 TTFT (ms):                           145447.24
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          241.15
+Median TPOT (ms):                        259.23
+P99 TPOT (ms):                           371.23
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           243.91
+Median ITL (ms):                         260.70
+P99 ITL (ms):                            2068.21
+==================================================
+```
+
+```
+ChatCompletion(id='chatcmpl-4268cf6911374e239475864d1b0c27a8', choices=[Choice(finish_reason='stop', index=0, logprobs=None, message=ChatCompletionMessage(content='<think>Got it, let\'s analyze the problem. The question is about a c
+ube losing a vertex (corner) and what the resulting shape is, then identifying which numbered figure (1-4) matches. \n\nFirst, a cube has 8 vertices. When a corner (vertex) is removed, we\'re essentially cutting off a corner, which
+is a tetrahedral cut. The resulting shape should be a polyhedron. Let\'s think about the faces: originally, a cube\'s vertex is where three faces meet. Removing a vertex would create a new triangular face where the corner was, and t
+he original adjacent faces would be modified. \n\nNow, let\'s look at the figures. Figure 3 and 4 have larger triangular faces, while 1 and 2 have smaller triangular faces. When you cut off a vertex of a cube, the new face should be
+ a triangle, and the original cube\'s faces near the cut would have a new edge (a triangle\'s edge). Wait, the shape after removing a vertex is a polyhedron with how many faces? Let\'s count: a cube has 6 faces. When you remove a ve
+rtex, you replace one vertex with a triangular face, so the number of faces becomes 6 - 1 + 1 (the new triangular face) = 6? Wait, no. Wait, when you cut a corner (a vertex), you\'re creating a new face. Each vertex removal adds a f
+ace. So original cube has 6 faces, 8 vertices. Each vertex removal adds 1 face, so 6 + 1 = 7 faces? Wait, maybe better to visualize. The shape after cutting off a corner of a cube is a polyhedron called a "truncated cube" part, but
+maybe more specifically, the shape has a triangular face where the corner was, and the other faces are quadrilaterals or triangles? Wait, let\'s check the figures. Figure 3 and 4 have a large triangular face, while 1 and 2 have smal
+ler triangular faces. The key is that when you remove a vertex, the resulting shape has a triangular face (the new face) and the original cube\'s adjacent faces are each modified by a triangle. Wait, let\'s think about the number of
+ edges and faces. Alternatively, the shape after removing a vertex from a cube is a polyhedron with 7 faces? Wait, no. Wait, the correct shape when you cut off a corner of a cube is a polyhedron with 5 faces? Wait, no. Wait, let\'s
+look at the figures. Figure 3 and 4 have a large triangular face, which would be the new face created by cutting the corner. The other faces are quadrilaterals or triangles? Wait, the original cube has 6 faces. When you cut a corner
+, you\'re removing a vertex, which is connected to 3 edges. Cutting the corner would create a triangular face (3 edges) and modify the 3 adjacent faces (each of those faces would have a new edge, a triangle\'s edge). So each of the
+3 adjacent faces becomes a pentagon? Wait, no. Wait, if you have a cube, and you cut a corner, the intersection is a triangle, so the new face is a triangle, and the original three faces (which met at the corner) each have a triangu
+lar cut, so each of those three faces becomes a quadrilateral? Wait, no. Let\'s think of a cube with a corner (vertex) removed. The resulting shape is a polyhedron with 5 faces? Wait, no. Wait, let\'s count the faces in figure 3: it
+ has a large triangular face and three quadrilateral faces? Wait, figure 3 shows a shape with a large triangular face and the other faces—wait, the image shows figure 3 as having a large gray triangular face, and the other faces are
+ white. Let\'s check the structure. When you remove a vertex from a cube, the resulting shape has a triangular face (the one where the vertex was) and the other faces are quadrilaterals. Wait, maybe the correct figure is 3 or 4. Wai
+t, let\'s think about the orientation. The key is that the shape after removing a vertex has a triangular face, and the number of faces. Alternatively, the shape is a tetrahedron-like addition but on a cube. Wait, the correct answer
+ is likely figure 3 or 4. Wait, let\'s recall that when you cut off a corner of a cube, the resulting polyhedron has a triangular face, and the original cube\'s faces near the cut are each reduced by a triangle, making them quadrila
+terals. So the shape would have 5 faces: the new triangular face and 4 quadrilaterals? No, wait, a cube has 6 faces. When you remove a vertex, you remove one vertex, and the new face is added, so 6 - 1 + 1 = 6 faces? Hmm, maybe I\'m
+ overcomplicating. Let\'s look at the figures. Figure 1 and 2 have small triangular faces (the gray area is a small triangle), while 3 and 4 have large triangular faces. When you remove a corner (vertex) of a cube, the cut creates a
+ larger triangular face, so the gray area should be a larger triangle, which would be figure 3 or 4. Now, which one is it? Let\'s think about the perspective. The shape after cutting a corner should have a triangular face that\'s a
+new face, and the other faces are the original faces minus the corner. So the gray area in figure 3 is a large triangle, which would be the new face, and the other faces are the remaining parts. So the correct number is 3 or 4? Wait
+, maybe the answer is 3 or 4, but let\'s check again. Wait, the problem says "a cube loses one vertex after a \'corner\' is removed. This geometric shape is ___". The shape after removing a corner (vertex) of a cube is a polyhedron
+called a "truncated cube" part, but more precisely, it\'s a shape with a triangular face. Among the options, figure 3 and 4 have large triangular faces. Let\'s check the number of edges. The original cube has 12 edges. After removin
+g a vertex, how many edges does the new shape have? Each vertex removal adds 3 edges (the edges of the new triangular face), but maybe that\'s not helpful. Alternatively, the correct figure is 3. Wait, no, let\'s think of the gray a
+rea. In figure 3, the gray area is a large triangle covering a significant portion, while in figure 4, it\'s also a large triangle. Wait, maybe the key is that when you remove a corner, the resulting shape has a triangular face, and
+ the figure with the largest triangular face is the one. But I need to pick between 3 and 4. Wait, maybe the answer is 3. Wait, no, let\'s do a step-by-step. Step 1: A cube has 8 vertices. Removing one vertex means the shape now has
+ 7 vertices. Step 2: When a vertex is removed (cut off), the shape gains a new face (a triangle, since the intersection of the cut is a triangle). Step 3: The original cube had 6 faces; after removing a vertex, one face is modified,
+ and a new face is added, so total faces are 6 - 1 + 1 = 6? Wait, no, each vertex removal adds a face. So 6 + 1 = 7 faces? Hmm. Step 4: Looking at the figures, figure 3 has a large triangular face (new face) and the other faces are
+quadrilaterals. Figure 4 also has a large triangular face. Wait, maybe the correct answer is 3. Wait, I think the answer is 3.</think><answer>To determine the shape after a cube loses one vertex (corner), we analyze the process: rem
+oving a vertex creates a new triangular face where the corner was, modifying adjacent faces. Among the figures, the one with a large triangular face (matching the new face from cutting a corner) is identified. The correct figure is
+3, so the final result is <|begin_of_box|>3<|end_of_box|>.', refusal=None, role='assistant', annotations=None, audio=None, function_call=None, tool_calls=[], reasoning_content=None), stop_reason=151348)], created=1757662384, model='
+/home/mindone/yx/models/ZhipuAI/GLM-4.1V-9B-Thinking', object='chat.completion', service_tier=None, system_fingerprint=None, usage=CompletionUsage(completion_tokens=1724, prompt_tokens=1217, total_tokens=2941, completion_tokens_deta
+ils=None, prompt_tokens_details=None), prompt_logprobs=None, kv_transfer_params=None)
+
+```
+
 ## About
 
 vLLM is a fast and easy-to-use library for LLM inference and serving.
