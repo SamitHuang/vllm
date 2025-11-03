@@ -319,6 +319,13 @@ class OutputProcessor:
     def has_unfinished_requests(self) -> bool:
         return len(self.request_states) > 0
 
+    def get_tracked_request_ids(self) -> list[str]:
+        request_ids = list(self.request_states.keys())
+        for parent_id in self.parent_requests.keys():
+            if parent_id not in self.request_states:
+                request_ids.append(parent_id)
+        return request_ids
+
     def propagate_error(self, e: Exception):
         """Propagate error to all generate() tasks."""
 

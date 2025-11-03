@@ -159,6 +159,12 @@ class AsyncLLM(EngineClient):
             )
             self.logger_manager.log_engine_initialized()
 
+        # Pause / resume state for async RL workflows.
+        self._pause_lock = asyncio.Lock()
+        self._pause_event = asyncio.Event()
+        self._pause_event.set()
+        self._is_paused = False
+
         self.output_handler: asyncio.Task | None = None
         try:
             # Start output handler eagerly if we are in the asyncio eventloop.
@@ -407,6 +413,9 @@ class AsyncLLM(EngineClient):
             # to handle startup failure gracefully in the OpenAI server.
             self._run_output_handler()
 
+            # Wait until generation is resumed if the engine is paused.
+            await self._pause_event.wait()
+
             if tokenization_kwargs is None:
                 tokenization_kwargs = {}
                 truncate_prompt_tokens = sampling_params.truncate_prompt_tokens
@@ -552,6 +561,130 @@ class AsyncLLM(EngineClient):
         if self.log_requests:
             logger.info("Aborted request(s) %s.", ",".join(request_ids))
 
+    async def pause_generation(
+        self,
+        *,
+        mode: str = "gentle",
+        drain_timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Pause generation to allow model weight updates.
+
+        Args:
+            mode: ``"gentle"`` waits for in-flight requests to finish.
+                ``"force"`` immediately aborts running requests.
+            drain_timeout: Maximum seconds to wait for requests to finish. When
+                ``mode="force"`` this is used as a safeguard to ensure aborts
+                complete.
+
+        Returns:
+            A dictionary describing the pause status.
+        """
+
+        if mode not in {"gentle", "force"}:
+            raise ValueError(f"Unsupported pause mode: {mode!r}")
+
+        async with self._pause_lock:
+            if self._is_paused:
+                unfinished = self.output_processor.get_num_unfinished_requests()
+                return {
+                    "paused": True,
+                    "mode": mode,
+                    "message": "Already paused",
+                    "drained": unfinished == 0,
+                    "num_unfinished_requests": unfinished,
+                    "elapsed_seconds": 0.0,
+                    "aborted_requests": 0,
+                }
+
+            self._is_paused = True
+            self._pause_event.clear()
+
+        start_time = time.perf_counter()
+        drained = False
+        aborted_requests = 0
+
+        if mode == "force":
+            request_ids = self.output_processor.get_tracked_request_ids()
+            aborted_requests = len(request_ids)
+            if request_ids:
+                await self.abort(request_ids)
+
+            deadline = start_time + drain_timeout
+            while self.output_processor.has_unfinished_requests():
+                if time.perf_counter() >= deadline:
+                    break
+                await asyncio.sleep(0.05)
+
+            drained = (
+                not self.output_processor.has_unfinished_requests()
+                and not self.engine_core.dp_engines_running()
+            )
+        else:
+            deadline = start_time + drain_timeout
+            while True:
+                unfinished = self.output_processor.has_unfinished_requests()
+                dp_running = self.engine_core.dp_engines_running()
+                if not unfinished and not dp_running:
+                    drained = True
+                    break
+
+                if time.perf_counter() >= deadline:
+                    break
+
+                await asyncio.sleep(0.05)
+
+        if drained:
+            await self.reset_prefix_cache()
+            await self.reset_mm_cache()
+        else:
+            logger.warning(
+                "pause_generation(%s) timed out: unfinished=%s, dp_running=%s",
+                mode,
+                self.output_processor.get_num_unfinished_requests(),
+                self.engine_core.dp_engines_running(),
+            )
+
+        elapsed = time.perf_counter() - start_time
+        return {
+            "paused": True,
+            "mode": mode,
+            "message": "Generation paused successfully"
+            if drained
+            else "Generation paused with outstanding requests",
+            "drained": drained,
+            "num_unfinished_requests": self.output_processor.get_num_unfinished_requests(),
+            "elapsed_seconds": elapsed,
+            "aborted_requests": aborted_requests,
+        }
+
+    async def resume_generation(self) -> dict[str, Any]:
+        """Resume generation after :meth:`pause_generation`."""
+
+        async with self._pause_lock:
+            if not self._is_paused:
+                return {
+                    "paused": False,
+                    "message": "Not paused",
+                    "num_unfinished_requests": self.output_processor.get_num_unfinished_requests(),
+                }
+
+            self._is_paused = False
+            self._pause_event.set()
+
+        return {
+            "paused": False,
+            "message": "Generation resumed",
+            "num_unfinished_requests": self.output_processor.get_num_unfinished_requests(),
+        }
+
+    async def get_pause_status(self) -> dict[str, Any]:
+        """Return the current pause status."""
+
+        return {
+            "is_paused": self._is_paused,
+            "num_unfinished_requests": self.output_processor.get_num_unfinished_requests(),
+        }
+
     async def encode(
         self,
         prompt: PromptType,
@@ -582,6 +715,9 @@ class AsyncLLM(EngineClient):
             # we can call __init__ before the event loop, which enables us
             # to handle startup failure gracefully in the OpenAI server.
             self._run_output_handler()
+
+            # Respect pause state before accepting new requests.
+            await self._pause_event.wait()
 
             if tokenization_kwargs is None:
                 tokenization_kwargs = {}

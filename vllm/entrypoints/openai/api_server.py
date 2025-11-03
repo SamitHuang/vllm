@@ -387,6 +387,89 @@ async def ping(raw_request: Request) -> Response:
     return await health(raw_request)
 
 
+@router.post("/v1/pause")
+async def pause_generation(raw_request: Request) -> JSONResponse:
+    """Pause generation requests to allow weight updates."""
+
+    engine = engine_client(raw_request)
+    if not hasattr(engine, "pause_generation"):
+        return JSONResponse(
+            content={
+                "error": "Pause/resume not supported by current engine. Set VLLM_USE_V1=1."
+            },
+            status_code=HTTPStatus.NOT_IMPLEMENTED.value,
+        )
+
+    mode = raw_request.query_params.get("mode", "gentle")
+
+    try:
+        result = await engine.pause_generation(mode=mode)
+    except ValueError as err:
+        return JSONResponse(
+            content={"error": str(err)},
+            status_code=HTTPStatus.BAD_REQUEST.value,
+        )
+    except Exception as err:  # pragma: no cover - defensive
+        logger.exception("Failed to pause generation")
+        return JSONResponse(
+            content={"error": f"Failed to pause generation: {err}"},
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
+        )
+
+    return JSONResponse(content=result)
+
+
+@router.post("/v1/resume")
+async def resume_generation(raw_request: Request) -> JSONResponse:
+    """Resume generation after a pause."""
+
+    engine = engine_client(raw_request)
+    if not hasattr(engine, "resume_generation"):
+        return JSONResponse(
+            content={
+                "error": "Pause/resume not supported by current engine. Set VLLM_USE_V1=1."
+            },
+            status_code=HTTPStatus.NOT_IMPLEMENTED.value,
+        )
+
+    try:
+        result = await engine.resume_generation()
+    except Exception as err:  # pragma: no cover - defensive
+        logger.exception("Failed to resume generation")
+        return JSONResponse(
+            content={"error": f"Failed to resume generation: {err}"},
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
+        )
+
+    return JSONResponse(content=result)
+
+
+@router.get("/v1/pause_status")
+async def pause_status(raw_request: Request) -> JSONResponse:
+    """Return the current pause status."""
+
+    engine = engine_client(raw_request)
+    if not hasattr(engine, "get_pause_status"):
+        return JSONResponse(
+            content={
+                "is_paused": False,
+                "num_unfinished_requests": 0,
+                "error": "Pause/resume not supported by current engine. Set VLLM_USE_V1=1.",
+            }
+        )
+
+    try:
+        result = await engine.get_pause_status()
+    except Exception as err:  # pragma: no cover - defensive
+        logger.exception("Failed to fetch pause status")
+        return JSONResponse(
+            content={"error": f"Failed to fetch pause status: {err}"},
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
+        )
+
+    return JSONResponse(content=result)
+
+
 @router.post(
     "/tokenize",
     dependencies=[Depends(validate_json_request)],
