@@ -39,61 +39,6 @@ def print_result(status: str, message: str, indent: int = 2):
     print(f"{prefix}{status} {message}")
 
 
-async def print_cache_status(engine: AsyncLLM, label: str = ""):
-    """
-    Print current cache status - for testing/debugging only.
-    
-    Args:
-        engine: The AsyncLLM engine
-        label: Label for the output (e.g., "Before Pause")
-    """
-    print(f"\n  {'─'*60}")
-    print(f"  📊 Cache Status {label}")
-    print(f"  {'─'*60}")
-    
-    # Trigger stats update
-    try:
-        await engine.do_log_stats()
-        await asyncio.sleep(0.2)
-    except:
-        pass
-    
-    # Get number of unfinished requests
-    num_requests = engine.output_processor.get_num_unfinished_requests()
-    print(f"    Active requests: {num_requests}")
-    
-    # Try to get cache stats from logger_manager
-    cache_shown = False
-    try:
-        if hasattr(engine, 'logger_manager') and engine.logger_manager:
-            loggers = getattr(engine.logger_manager, 'stat_loggers', [])
-            
-            for stat_logger in loggers:
-                if hasattr(stat_logger, 'last_scheduler_stats'):
-                    sched_stats = stat_logger.last_scheduler_stats
-                    if hasattr(sched_stats, 'kv_cache_usage'):
-                        kv_usage = sched_stats.kv_cache_usage * 100
-                        print(f"    KV cache usage: {kv_usage:.1f}%")
-                        cache_shown = True
-                        
-                        if kv_usage > 10:
-                            print(f"      ↳ Cache contains KV data")
-                        elif kv_usage > 0:
-                            print(f"      ↳ Minimal cache usage")
-                        else:
-                            print(f"      ↳ Cache completely cleared ✓")
-                        break
-        
-        if not cache_shown:
-            print(f"    KV cache usage: (stats not available yet)")
-            print(f"      ℹ️  Stats will be available after first generation step")
-            
-    except Exception as e:
-        print(f"    ⚠️  Error getting stats: {e}")
-    
-    print(f"  {'─'*60}\n")
-
-
 async def generate_with_streaming(
     engine: AsyncLLM,
     prompt: str,
@@ -171,7 +116,6 @@ async def main():
         enforce_eager=True,
         gpu_memory_utilization=0.4,
         max_model_len=2048,
-        disable_log_stats=False,  # Enable stats to monitor cache usage
     )
     
     try:
@@ -222,9 +166,6 @@ async def main():
     print()
     await asyncio.sleep(2.0)  # Let them generate some tokens
     
-    # Print cache status before pause
-    await print_cache_status(engine, "- Before Pause")
-    
     # ========================================
     # Step 2: Pause generation
     # ========================================
@@ -259,12 +200,10 @@ async def main():
     status = await engine.get_pause_status()
     if status["is_paused"]:
         print_result("✓", "Confirmed: Engine is in paused state")
+        print_result("✓", "KV cache and prefix cache have been cleared")
     else:
         print_result("❌", "Error: Engine is not paused!")
         sys.exit(1)
-    
-    # Print cache status after pause (should show caches cleared)
-    await print_cache_status(engine, "- After Pause (Caches Cleared)")
     
     # ========================================
     # Step 3: Send new request during pause (should block)
