@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+"""
+Standalone test for pause/resume functionality with Qwen2.5-0.5B.
+
+This script can be run directly without pytest:
+    VLLM_USE_V1=1 python test_pause_resume_standalone.py
+
+Test workflow:
+1. Send multiple QA generation requests
+2. Pause generation
+3. Send new request (should block until resume)
+4. Resume generation  
+5. Verify blocked request completes
+6. Send another request (should work normally)
+"""
+
+import asyncio
+import os
+import sys
+import time
+from typing import Optional
+
+from vllm import SamplingParams
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.v1.engine.async_llm import AsyncLLM
+
+
+def print_step(step_num: int, description: str):
+    """Print formatted step header."""
+    print(f"\n{'='*70}")
+    print(f"[Step {step_num}] {description}")
+    print(f"{'='*70}")
+
+
+def print_result(status: str, message: str, indent: int = 2):
+    """Print formatted result."""
+    prefix = " " * indent
+    print(f"{prefix}{status} {message}")
+
+
+async def generate_completion(
+    engine: AsyncLLM,
+    prompt: str,
+    request_id: str,
+    max_tokens: int = 30,
+) -> Optional[any]:
+    """
+    Generate a completion and return the final output.
+    
+    Args:
+        engine: The AsyncLLM engine
+        prompt: Input prompt
+        request_id: Unique request ID
+        max_tokens: Maximum tokens to generate
+        
+    Returns:
+        Final RequestOutput or None if error
+    """
+    sampling_params = SamplingParams(
+        temperature=0.7,
+        max_tokens=max_tokens,
+        top_p=0.9,
+    )
+    
+    final_output = None
+    try:
+        async for output in engine.generate(
+            prompt=prompt,
+            sampling_params=sampling_params,
+            request_id=request_id,
+        ):
+            final_output = output
+    except Exception as e:
+        print_result("❌", f"Error generating: {e}")
+        return None
+    
+    return final_output
+
+
+async def main():
+    """Main test workflow."""
+    
+    # Check environment
+    if os.getenv("VLLM_USE_V1") != "1":
+        print("❌ ERROR: VLLM_USE_V1 must be set to 1")
+        print("   Run: VLLM_USE_V1=1 python test_pause_resume_standalone.py")
+        sys.exit(1)
+    
+    print("\n" + "="*70)
+    print("Pause/Resume Test with Qwen2.5-0.5B")
+    print("="*70)
+    print()
+    
+    # Initialize engine
+    print("Initializing Qwen2.5-0.5B engine...")
+    print("(This may take a moment for first-time model download)")
+    
+    engine_args = AsyncEngineArgs(
+        model="Qwen/Qwen2.5-0.5B-Instruct",
+        enforce_eager=True,
+        gpu_memory_utilization=0.4,
+        max_model_len=2048,
+    )
+    
+    try:
+        engine = AsyncLLM.from_engine_args(engine_args)
+        print_result("✓", "Engine initialized successfully")
+    except Exception as e:
+        print_result("❌", f"Failed to initialize engine: {e}")
+        sys.exit(1)
+    
+    # ========================================
+    # Step 1: Send multiple QA requests
+    # ========================================
+    print_step(1, "Sending multiple QA generation requests")
+    
+    qa_prompts = [
+        "Q: What is the capital of France?\nA:",
+        "Q: What is 2 + 2?\nA:",
+        "Q: Who wrote Romeo and Juliet?\nA:",
+    ]
+    
+    initial_tasks = []
+    for i, prompt in enumerate(qa_prompts):
+        task = asyncio.create_task(
+            generate_completion(
+                engine,
+                prompt=prompt,
+                request_id=f"initial_request_{i}",
+                max_tokens=30,
+            )
+        )
+        initial_tasks.append(task)
+        print_result("→", f"Started: {prompt.split('?')[0]}?")
+    
+    # Let them start generating
+    await asyncio.sleep(0.3)
+    print_result("✓", f"All {len(qa_prompts)} requests started")
+    
+    # ========================================
+    # Step 2: Pause generation
+    # ========================================
+    print_step(2, "Pausing generation")
+    
+    pause_start = time.time()
+    try:
+        pause_result = await engine.pause_generation()
+        pause_duration = time.time() - pause_start
+        
+        print_result("✓", "Pause successful")
+        print_result("  ", f"Mode: {pause_result['mode']}")
+        print_result("  ", f"Drained: {pause_result['drained']}")
+        print_result("  ", f"Elapsed: {pause_result['elapsed_seconds']:.3f}s")
+        print_result("  ", f"Unfinished: {pause_result['num_unfinished_requests']}")
+        print_result("  ", f"Aborted: {pause_result['aborted_requests']}")
+        
+        if not pause_result["paused"]:
+            print_result("❌", "Pause failed!")
+            sys.exit(1)
+            
+    except Exception as e:
+        print_result("❌", f"Pause error: {e}")
+        sys.exit(1)
+    
+    # Verify pause status
+    status = await engine.get_pause_status()
+    if status["is_paused"]:
+        print_result("✓", "Confirmed: Engine is in paused state")
+    else:
+        print_result("❌", "Error: Engine is not paused!")
+        sys.exit(1)
+    
+    # ========================================
+    # Step 3: Send new request during pause (should block)
+    # ========================================
+    print_step(3, "Sending request during pause (should block)")
+    
+    blocked_prompt = "Q: What is the meaning of life?\nA:"
+    print_result("→", f"Sending: {blocked_prompt.split('?')[0]}?")
+    
+    blocked_task = asyncio.create_task(
+        generate_completion(
+            engine,
+            prompt=blocked_prompt,
+            request_id="blocked_request",
+            max_tokens=30,
+        )
+    )
+    
+    # Wait to ensure it tries to start
+    await asyncio.sleep(0.5)
+    
+    if blocked_task.done():
+        print_result("❌", "ERROR: Request completed during pause!")
+        print_result("  ", "Pause is not working correctly!")
+        sys.exit(1)
+    else:
+        print_result("✓", "Request is blocked (paused state working correctly)")
+        print_result("  ", "The request is waiting for resume...")
+    
+    # ========================================
+    # Step 4: Resume generation
+    # ========================================
+    print_step(4, "Resuming generation")
+    
+    try:
+        resume_result = await engine.resume_generation()
+        
+        print_result("✓", "Resume successful")
+        print_result("  ", f"Paused: {resume_result['paused']}")
+        print_result("  ", f"Message: {resume_result['message']}")
+        
+        if resume_result["paused"]:
+            print_result("❌", "Error: Still paused after resume!")
+            sys.exit(1)
+            
+    except Exception as e:
+        print_result("❌", f"Resume error: {e}")
+        sys.exit(1)
+    
+    # Verify resumed status
+    status = await engine.get_pause_status()
+    if not status["is_paused"]:
+        print_result("✓", "Confirmed: Engine is resumed")
+    else:
+        print_result("❌", "Error: Engine is still paused!")
+        sys.exit(1)
+    
+    # ========================================
+    # Step 5: Verify blocked request completes
+    # ========================================
+    print_step(5, "Waiting for blocked request to complete")
+    
+    try:
+        blocked_output = await asyncio.wait_for(blocked_task, timeout=15.0)
+        
+        if blocked_output is None:
+            print_result("❌", "Blocked request returned None")
+            sys.exit(1)
+        
+        if not blocked_output.outputs:
+            print_result("❌", "Blocked request has no outputs")
+            sys.exit(1)
+        
+        generated_text = blocked_output.outputs[0].text
+        print_result("✓", "Blocked request completed after resume")
+        print_result("  ", f"Prompt: {blocked_prompt.strip()}")
+        print_result("  ", f"Generated: {generated_text[:60]}...")
+        print_result("  ", f"Total tokens: {len(blocked_output.outputs[0].token_ids)}")
+        
+    except asyncio.TimeoutError:
+        print_result("❌", "Blocked request timed out!")
+        sys.exit(1)
+    except Exception as e:
+        print_result("❌", f"Error waiting for blocked request: {e}")
+        sys.exit(1)
+    
+    # ========================================
+    # Step 6: Send new request (should work normally)
+    # ========================================
+    print_step(6, "Sending new request after resume")
+    
+    new_prompt = "Q: What is the speed of light?\nA:"
+    print_result("→", f"Sending: {new_prompt.split('?')[0]}?")
+    
+    try:
+        new_output = await generate_completion(
+            engine,
+            prompt=new_prompt,
+            request_id="new_request_after_resume",
+            max_tokens=30,
+        )
+        
+        if new_output is None or not new_output.outputs:
+            print_result("❌", "New request failed")
+            sys.exit(1)
+        
+        new_text = new_output.outputs[0].text
+        print_result("✓", "New request completed successfully")
+        print_result("  ", f"Prompt: {new_prompt.strip()}")
+        print_result("  ", f"Generated: {new_text[:60]}...")
+        print_result("  ", f"Total tokens: {len(new_output.outputs[0].token_ids)}")
+        
+    except Exception as e:
+        print_result("❌", f"Error with new request: {e}")
+        sys.exit(1)
+    
+    # ========================================
+    # Verification: Check initial requests
+    # ========================================
+    print_step(7, "Verifying initial requests completed")
+    
+    initial_outputs = await asyncio.gather(*initial_tasks, return_exceptions=True)
+    
+    completed = 0
+    for i, output in enumerate(initial_outputs):
+        if isinstance(output, Exception):
+            print_result("⚠️", f"Request {i} failed: {output}")
+        elif output and hasattr(output, 'outputs') and output.outputs:
+            completed += 1
+            text = output.outputs[0].text.strip()[:40]
+            print_result("✓", f"Request {i}: '{text}...'")
+        else:
+            print_result("⚠️", f"Request {i}: No output")
+    
+    print_result("", f"Completed: {completed}/{len(qa_prompts)} requests")
+    
+    # ========================================
+    # Final summary
+    # ========================================
+    print("\n" + "="*70)
+    print("✅ ALL TESTS PASSED!")
+    print("="*70)
+    print()
+    print("Summary:")
+    print(f"  ✓ Step 1: Sent {len(qa_prompts)} initial requests")
+    print(f"  ✓ Step 2: Paused generation (took {pause_duration:.3f}s)")
+    print(f"  ✓ Step 3: New request blocked during pause")
+    print(f"  ✓ Step 4: Resumed generation")
+    print(f"  ✓ Step 5: Blocked request completed after resume")
+    print(f"  ✓ Step 6: New request worked normally")
+    print(f"  ✓ Step 7: Initial requests: {completed}/{len(qa_prompts)} completed")
+    print()
+    print("Pause/Resume functionality is working correctly! 🎉")
+    print("="*70)
+    print()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Test interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n\n❌ Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
