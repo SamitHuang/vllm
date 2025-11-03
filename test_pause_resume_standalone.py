@@ -51,23 +51,30 @@ async def print_cache_status(engine: AsyncLLM, label: str = ""):
     print(f"  📊 Cache Status {label}")
     print(f"  {'─'*60}")
     
-    # Give a small delay to let stats update
-    await asyncio.sleep(0.1)
+    # Trigger stats update
+    try:
+        await engine.do_log_stats()
+        await asyncio.sleep(0.2)
+    except:
+        pass
     
     # Get number of unfinished requests
     num_requests = engine.output_processor.get_num_unfinished_requests()
     print(f"    Active requests: {num_requests}")
     
-    # Try to get cache stats from logger_manager (best effort)
+    # Try to get cache stats from logger_manager
+    cache_shown = False
     try:
         if hasattr(engine, 'logger_manager') and engine.logger_manager:
             loggers = getattr(engine.logger_manager, 'stat_loggers', [])
+            
             for stat_logger in loggers:
                 if hasattr(stat_logger, 'last_scheduler_stats'):
                     sched_stats = stat_logger.last_scheduler_stats
                     if hasattr(sched_stats, 'kv_cache_usage'):
                         kv_usage = sched_stats.kv_cache_usage * 100
                         print(f"    KV cache usage: {kv_usage:.1f}%")
+                        cache_shown = True
                         
                         if kv_usage > 10:
                             print(f"      ↳ Cache contains KV data")
@@ -76,12 +83,13 @@ async def print_cache_status(engine: AsyncLLM, label: str = ""):
                         else:
                             print(f"      ↳ Cache completely cleared ✓")
                         break
-            else:
-                print(f"    KV cache usage: (waiting for stats...)")
-        else:
-            print(f"    KV cache usage: (stats not enabled)")
+        
+        if not cache_shown:
+            print(f"    KV cache usage: (stats not available yet)")
+            print(f"      ℹ️  Stats will be available after first generation step")
+            
     except Exception as e:
-        print(f"    ⚠️  {e}")
+        print(f"    ⚠️  Error getting stats: {e}")
     
     print(f"  {'─'*60}\n")
 
