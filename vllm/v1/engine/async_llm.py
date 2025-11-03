@@ -160,9 +160,7 @@ class AsyncLLM(EngineClient):
             self.logger_manager.log_engine_initialized()
 
         # Pause / resume state for async RL workflows.
-        self._pause_lock = asyncio.Lock()
-        self._pause_event = asyncio.Event()
-        self._pause_event.set()
+        self._pause_cond = asyncio.Condition()
         self._is_paused = False
 
         self.output_handler: asyncio.Task | None = None
@@ -414,7 +412,8 @@ class AsyncLLM(EngineClient):
             self._run_output_handler()
 
             # Wait until generation is resumed if the engine is paused.
-            await self._pause_event.wait()
+            async with self._pause_cond:
+                await self._pause_cond.wait_for(lambda: not self._is_paused)
 
             if tokenization_kwargs is None:
                 tokenization_kwargs = {}
@@ -583,7 +582,7 @@ class AsyncLLM(EngineClient):
         if mode not in {"gentle", "force"}:
             raise ValueError(f"Unsupported pause mode: {mode!r}")
 
-        async with self._pause_lock:
+        async with self._pause_cond:
             if self._is_paused:
                 unfinished = self.output_processor.get_num_unfinished_requests()
                 return {
@@ -597,7 +596,6 @@ class AsyncLLM(EngineClient):
                 }
 
             self._is_paused = True
-            self._pause_event.clear()
 
         start_time = time.perf_counter()
         drained = False
@@ -660,7 +658,7 @@ class AsyncLLM(EngineClient):
     async def resume_generation(self) -> dict[str, Any]:
         """Resume generation after :meth:`pause_generation`."""
 
-        async with self._pause_lock:
+        async with self._pause_cond:
             if not self._is_paused:
                 return {
                     "paused": False,
@@ -669,7 +667,7 @@ class AsyncLLM(EngineClient):
                 }
 
             self._is_paused = False
-            self._pause_event.set()
+            self._pause_cond.notify_all()  # Wake up all waiting requests
 
         return {
             "paused": False,
@@ -717,7 +715,8 @@ class AsyncLLM(EngineClient):
             self._run_output_handler()
 
             # Respect pause state before accepting new requests.
-            await self._pause_event.wait()
+            async with self._pause_cond:
+                await self._pause_cond.wait_for(lambda: not self._is_paused)
 
             if tokenization_kwargs is None:
                 tokenization_kwargs = {}
