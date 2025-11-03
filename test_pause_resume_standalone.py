@@ -39,6 +39,65 @@ def print_result(status: str, message: str, indent: int = 2):
     print(f"{prefix}{status} {message}")
 
 
+async def print_cache_status(engine: AsyncLLM, label: str = ""):
+    """
+    Print current cache status including KV cache and prefix cache.
+    
+    Args:
+        engine: The AsyncLLM engine
+        label: Label for the output (e.g., "Before Pause")
+    """
+    try:
+        print(f"\n  {'─'*60}")
+        print(f"  📊 Cache Status {label}")
+        print(f"  {'─'*60}")
+        
+        # Get number of unfinished requests (indicates active KV cache usage)
+        num_requests = engine.output_processor.get_num_unfinished_requests()
+        print(f"    Active requests: {num_requests}")
+        
+        # Try to access internal cache manager if available
+        try:
+            if hasattr(engine, 'engine_core') and hasattr(engine.engine_core, 'scheduler'):
+                scheduler = engine.engine_core.scheduler
+                
+                # Get KV cache manager
+                if hasattr(scheduler, 'kv_cache_manager'):
+                    kv_mgr = scheduler.kv_cache_manager
+                    
+                    # Get cache usage
+                    if hasattr(kv_mgr, 'usage'):
+                        usage_pct = kv_mgr.usage * 100
+                        print(f"    KV cache usage: {usage_pct:.1f}%")
+                    
+                    # Get block pool info
+                    if hasattr(kv_mgr, 'block_pool'):
+                        pool = kv_mgr.block_pool
+                        if hasattr(pool, 'get_num_free_blocks'):
+                            free_blocks = pool.get_num_free_blocks()
+                            total_blocks = getattr(pool, 'num_gpu_blocks', 0)
+                            used_blocks = total_blocks - free_blocks if total_blocks else 0
+                            print(f"    Used/Total blocks: {used_blocks}/{total_blocks}")
+                            print(f"    Free blocks: {free_blocks}")
+                        
+                        # Prefix cache info
+                        if hasattr(pool, 'num_cached_blocks'):
+                            cached = pool.num_cached_blocks
+                            print(f"    Prefix cached blocks: {cached}")
+                            if cached > 0:
+                                print(f"      ↳ These blocks contain shared prompt KV cache")
+                            else:
+                                print(f"      ↳ Prefix cache is empty")
+        except Exception:
+            # Silently ignore if we can't access internals
+            pass
+        
+        print(f"  {'─'*60}\n")
+        
+    except Exception as e:
+        print(f"    ⚠️  Could not retrieve cache stats: {e}\n")
+
+
 async def generate_with_streaming(
     engine: AsyncLLM,
     prompt: str,
@@ -110,7 +169,7 @@ async def main():
     print("Initializing Qwen2.5-0.5B engine...")
     print("(This may take a moment for first-time model download)")
 
-    local_prefix = "/home/mindone/hyx/models/" 
+    local_prefix = "/home/mindone/yx/models/" 
     engine_args = AsyncEngineArgs(
         model=local_prefix + "Qwen/Qwen2.5-0.5B-Instruct",
         enforce_eager=True,
@@ -166,6 +225,9 @@ async def main():
     print()
     await asyncio.sleep(2.0)  # Let them generate some tokens
     
+    # Print cache status before pause
+    await print_cache_status(engine, "- Before Pause")
+    
     # ========================================
     # Step 2: Pause generation
     # ========================================
@@ -173,6 +235,7 @@ async def main():
     print_step(2, "Pausing generation (generation should stop)")
     print()
     print_result("⏸️", "Calling pause_generation()...")
+    print_result("", "(This will wait for requests to finish and clear caches)")
     
     pause_start = time.time()
     try:
@@ -202,6 +265,9 @@ async def main():
     else:
         print_result("❌", "Error: Engine is not paused!")
         sys.exit(1)
+    
+    # Print cache status after pause (should show caches cleared)
+    await print_cache_status(engine, "- After Pause (Caches Cleared)")
     
     # ========================================
     # Step 3: Send new request during pause (should block)
