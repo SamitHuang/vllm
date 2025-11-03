@@ -41,61 +41,49 @@ def print_result(status: str, message: str, indent: int = 2):
 
 async def print_cache_status(engine: AsyncLLM, label: str = ""):
     """
-    Print current cache status including KV cache and prefix cache.
+    Print current cache status - for testing/debugging only.
     
     Args:
         engine: The AsyncLLM engine
         label: Label for the output (e.g., "Before Pause")
     """
+    print(f"\n  {'─'*60}")
+    print(f"  📊 Cache Status {label}")
+    print(f"  {'─'*60}")
+    
+    # Give a small delay to let stats update
+    await asyncio.sleep(0.1)
+    
+    # Get number of unfinished requests
+    num_requests = engine.output_processor.get_num_unfinished_requests()
+    print(f"    Active requests: {num_requests}")
+    
+    # Try to get cache stats from logger_manager (best effort)
     try:
-        print(f"\n  {'─'*60}")
-        print(f"  📊 Cache Status {label}")
-        print(f"  {'─'*60}")
-        
-        # Get number of unfinished requests (indicates active KV cache usage)
-        num_requests = engine.output_processor.get_num_unfinished_requests()
-        print(f"    Active requests: {num_requests}")
-        
-        # Try to access internal cache manager if available
-        try:
-            if hasattr(engine, 'engine_core') and hasattr(engine.engine_core, 'scheduler'):
-                scheduler = engine.engine_core.scheduler
-                
-                # Get KV cache manager
-                if hasattr(scheduler, 'kv_cache_manager'):
-                    kv_mgr = scheduler.kv_cache_manager
-                    
-                    # Get cache usage
-                    if hasattr(kv_mgr, 'usage'):
-                        usage_pct = kv_mgr.usage * 100
-                        print(f"    KV cache usage: {usage_pct:.1f}%")
-                    
-                    # Get block pool info
-                    if hasattr(kv_mgr, 'block_pool'):
-                        pool = kv_mgr.block_pool
-                        if hasattr(pool, 'get_num_free_blocks'):
-                            free_blocks = pool.get_num_free_blocks()
-                            total_blocks = getattr(pool, 'num_gpu_blocks', 0)
-                            used_blocks = total_blocks - free_blocks if total_blocks else 0
-                            print(f"    Used/Total blocks: {used_blocks}/{total_blocks}")
-                            print(f"    Free blocks: {free_blocks}")
+        if hasattr(engine, 'logger_manager') and engine.logger_manager:
+            loggers = getattr(engine.logger_manager, 'stat_loggers', [])
+            for stat_logger in loggers:
+                if hasattr(stat_logger, 'last_scheduler_stats'):
+                    sched_stats = stat_logger.last_scheduler_stats
+                    if hasattr(sched_stats, 'kv_cache_usage'):
+                        kv_usage = sched_stats.kv_cache_usage * 100
+                        print(f"    KV cache usage: {kv_usage:.1f}%")
                         
-                        # Prefix cache info
-                        if hasattr(pool, 'num_cached_blocks'):
-                            cached = pool.num_cached_blocks
-                            print(f"    Prefix cached blocks: {cached}")
-                            if cached > 0:
-                                print(f"      ↳ These blocks contain shared prompt KV cache")
-                            else:
-                                print(f"      ↳ Prefix cache is empty")
-        except Exception:
-            # Silently ignore if we can't access internals
-            pass
-        
-        print(f"  {'─'*60}\n")
-        
+                        if kv_usage > 10:
+                            print(f"      ↳ Cache contains KV data")
+                        elif kv_usage > 0:
+                            print(f"      ↳ Minimal cache usage")
+                        else:
+                            print(f"      ↳ Cache completely cleared ✓")
+                        break
+            else:
+                print(f"    KV cache usage: (waiting for stats...)")
+        else:
+            print(f"    KV cache usage: (stats not enabled)")
     except Exception as e:
-        print(f"    ⚠️  Could not retrieve cache stats: {e}\n")
+        print(f"    ⚠️  {e}")
+    
+    print(f"  {'─'*60}\n")
 
 
 async def generate_with_streaming(
@@ -175,6 +163,7 @@ async def main():
         enforce_eager=True,
         gpu_memory_utilization=0.4,
         max_model_len=2048,
+        disable_log_stats=False,  # Enable stats to monitor cache usage
     )
     
     try:
