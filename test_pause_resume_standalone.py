@@ -107,7 +107,7 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
             engine,
             prompt=initial_prompt,
             request_id="initial_request",
-            max_tokens=2048,  # Longer to show streaming effect
+            max_tokens=512,  # Longer to show streaming effect
             show_streaming=True,
             label="Initial",
         )
@@ -118,12 +118,12 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     
     # Step 2: Pause generation
     print_step(2, f"Pausing generation (mode: {mode}, clear_cache: {clear_cache})")
-    print_result("⏸️", "Calling pause_generation()...")
     
     pause_start = time.time()
     pause_result = await engine.pause_generation(mode=mode, clear_cache=clear_cache)
     pause_duration = time.time() - pause_start
     print_result("  ", f"Aborted: {pause_result['aborted_requests']}")
+    print_result("  ", "Elapsed time: {pause_duration:.2f}s")
         
     # Verify pause status
     status = await engine.get_pause_status()
@@ -210,5 +210,5 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     
 
 if __name__ == "__main__":
-    asyncio.run(test_pause_resume(mode='gentle', clear_cache=True))
+    asyncio.run(test_pause_resume(mode='force', clear_cache=True))
 
