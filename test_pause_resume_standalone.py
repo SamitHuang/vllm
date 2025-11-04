@@ -183,10 +183,10 @@ async def main():
         print()
         print_result("✓", "Pause successful - generation stopped!")
         print_result("  ", f"Mode: {pause_result['mode']}")
-        print_result("  ", f"Drained: {pause_result['drained']}")
         print_result("  ", f"Elapsed: {pause_result['elapsed_seconds']:.3f}s")
         print_result("  ", f"Unfinished: {pause_result['num_unfinished_requests']}")
         print_result("  ", f"Aborted: {pause_result['aborted_requests']}")
+        print_result("  ", f"Cache cleared: {pause_result['cache_cleared']}")
         
         if not pause_result["paused"]:
             print_result("❌", "Pause failed!")

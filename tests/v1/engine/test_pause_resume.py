@@ -157,8 +157,8 @@ async def test_pause_during_generation(engine: AsyncLLM):
     result = await engine.pause_generation()
     assert result["paused"] is True
     assert result["mode"] == "gentle"
-    assert result["drained"] is True
     assert result["aborted_requests"] == 0
+    assert result["cache_cleared"] is True
     
     # Wait a bit
     await asyncio.sleep(1.0)
@@ -184,7 +184,6 @@ async def test_pause_resume_multiple_cycles(engine: AsyncLLM):
         result = await engine.pause_generation()
         assert result["paused"] is True
         assert result["mode"] == "gentle"
-        assert result["drained"] is True
         assert result["aborted_requests"] == 0
 
         # Verify paused
@@ -268,7 +267,6 @@ async def test_pause_with_clear_cache(engine: AsyncLLM):
     result = await engine.pause_generation(clear_cache=True)
     assert result["paused"] is True
     assert result["cache_cleared"] is True
-    assert result["drained"] is True
     
     # Resume
     await engine.resume_generation()
@@ -277,7 +275,6 @@ async def test_pause_with_clear_cache(engine: AsyncLLM):
     result = await engine.pause_generation(clear_cache=False)
     assert result["paused"] is True
     assert result["cache_cleared"] is False
-    assert result["drained"] is True
     
     # Resume
     await engine.resume_generation()

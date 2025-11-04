@@ -100,10 +100,10 @@ async def test_pause_resume_workflow_qwen(qwen_engine: AsyncLLM):
     
     print(f"  ✓ Pause successful")
     print(f"    - Mode: {pause_result['mode']}")
-    print(f"    - Drained: {pause_result['drained']}")
     print(f"    - Elapsed: {pause_result['elapsed_seconds']:.2f}s")
     print(f"    - Unfinished: {pause_result['num_unfinished_requests']}")
     print(f"    - Aborted: {pause_result['aborted_requests']}")
+    print(f"    - Cache cleared: {pause_result['cache_cleared']}")
     
     assert pause_result["paused"] is True
     assert pause_result["mode"] == "gentle"
@@ -367,17 +367,14 @@ async def test_gentle_vs_force_pause_comparison(qwen_engine: AsyncLLM):
     print("Pausing (gentle mode)...")
     result = await qwen_engine.pause_generation(mode="gentle")
     
-    print(f"  - Drained: {result['drained']}")
     print(f"  - Aborted: {result['aborted_requests']}")
+    print(f"  - Unfinished: {result['num_unfinished_requests']}")
     
     gentle_output = await gentle_task
     
-    if result['drained']:
-        # Request finished before pause completed
-        print(f"  ✓ Request finished naturally (not aborted)")
-        assert gentle_output.outputs[0].finish_reason != FinishReason.ABORT
-    else:
-        print(f"  ✓ Request still running (will finish when resumed)")
+    # Gentle mode always waits for requests to finish
+    print(f"  ✓ Request finished naturally (not aborted)")
+    assert gentle_output.outputs[0].finish_reason != FinishReason.ABORT
     
     await qwen_engine.resume_generation()
     
@@ -460,7 +457,7 @@ async def test_complete_rl_simulation(qwen_engine: AsyncLLM):
         print(f"\n[Phase 2] Pausing for weight update...")
         pause_result = await qwen_engine.pause_generation()
         
-        print(f"  ✓ Paused (drained={pause_result['drained']})")
+        print(f"  ✓ Paused (cache_cleared={pause_result['cache_cleared']})")
         
         # Phase 3: Simulate weight update
         print(f"\n[Phase 3] Updating model weights...")
