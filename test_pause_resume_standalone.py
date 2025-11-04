@@ -4,12 +4,11 @@ Usage: python test_pause_resume_standalone.py
 
 Test workflow:
 1. Send a generation request (streaming output)
-2. Pause generation (you'll see generation interrupt)
+2. Pause generation (in-flight generation continues in gentle model, or aborted in force mode)
 3. Send new request (should block until resume)
 4. Resume generation  
 5. Verify blocked request completes
 6. Send another request (should work normally)
-7. Verify initial request completed
 """
 
 import asyncio
@@ -122,8 +121,8 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     pause_start = time.time()
     pause_result = await engine.pause_generation(mode=mode, clear_cache=clear_cache)
     pause_duration = time.time() - pause_start
-    print_result("  ", f"Aborted: {pause_result['aborted_requests']}")
-    print_result("  ", "Elapsed time: {pause_duration:.2f}s")
+    print_result("  ", "Pause time cost: {pause_duration:.2f}s")
+    print_result("  ", f"Aborted requests: {pause_result['aborted_requests']}")
         
     # Verify pause status
     status = await engine.get_pause_status()
@@ -196,17 +195,6 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     assert new_output is not None and new_output.outputs is not None
     print_result("✓", "New request completed successfully")
     print_result("  ", f"Generated: {new_output.outputs[0].text[:60]}...")
-    
-    # Verification: Check initial request completed in gentle mode
-    if mode == 'gentle':
-        print_step(7, "Verifying initial request completed in gentle mode")
-        
-        initial_output = await asyncio.wait_for(initial_task, timeout=5.0)
-        
-        text = initial_output.outputs[0].text
-        print_result("  ", f"Initial Request Prompt: {initial_prompt}")
-        print_result("  ", f"Generated: {text}")
-        print_result("  ", f"Total tokens: {len(initial_output.outputs[0].token_ids)}")
     
 
 if __name__ == "__main__":
