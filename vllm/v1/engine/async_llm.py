@@ -563,14 +563,14 @@ class AsyncLLM(EngineClient):
     async def pause_generation(
         self,
         *,
-        mode: str = "gentle",
+        mode: str = "force",
         clear_cache: bool = True,
     ) -> dict[str, Any]:
         """Pause generation to allow model weight updates.
 
         Args:
-            mode: ``"gentle"`` waits for in-flight requests to finish.
-                ``"force"`` immediately aborts running requests.
+            mode: ``"force"`` immediately aborts running requests (default).
+                ``"gentle"`` waits for in-flight requests to finish.
             clear_cache: Whether to clear KV cache and prefix cache after
                 draining. Set to ``False`` to preserve cache for faster resume.
                 Default is ``True`` (clear caches).

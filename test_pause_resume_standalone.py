@@ -189,5 +189,6 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     
 
 if __name__ == "__main__":
+    # Default mode is now 'force'
     asyncio.run(test_pause_resume(mode='force', clear_cache=True))
 

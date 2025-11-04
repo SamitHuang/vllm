@@ -390,14 +390,14 @@ async def ping(raw_request: Request) -> Response:
 @router.post("/v1/pause")
 async def pause_generation(
     raw_request: Request,
-    mode: Literal["gentle", "force"] = Query("gentle"),
+    mode: Literal["gentle", "force"] = Query("force"),
     clear_cache: bool = Query(True),
 ) -> JSONResponse:
     """Pause generation requests to allow weight updates.
     
     Args:
-        mode: Pause mode - "gentle" waits for requests to finish, 
-              "force" aborts running requests.
+        mode: Pause mode - "force" aborts running requests (default), 
+              "gentle" waits for requests to finish.
         clear_cache: Whether to clear KV cache and prefix cache after draining.
     """
 
