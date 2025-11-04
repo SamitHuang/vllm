@@ -95,8 +95,6 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     
     # Step 1: Send a generation request with streaming output
     print_step(1, "Sending generation request (streaming output)")
-    print()
-    
     initial_prompt = "Write a short story about a robot learning to paint."
     print_result("→", f"Prompt: {initial_prompt}")
     print_result("  ", "Streaming output:")
@@ -121,7 +119,7 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     pause_start = time.time()
     pause_result = await engine.pause_generation(mode=mode, clear_cache=clear_cache)
     pause_duration = time.time() - pause_start
-    print_result("  ", "Pause time cost: f{pause_duration:.4f}s")
+    print_result("  ", f"Pause time cost: {pause_duration:.4f}s")
     print_result("  ", f"Aborted requests: {pause_result['aborted_requests']}")
         
     # Verify pause status
