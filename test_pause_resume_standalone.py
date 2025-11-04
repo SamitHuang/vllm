@@ -1,11 +1,6 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: Apache-2.0
-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """
-Standalone test for pause/resume functionality with Qwen2.5-0.5B.
-
-This script can be run directly without pytest:
-    python test_pause_resume_standalone.py
+Test for pause/resume functionality with Qwen2.5-0.5B.
+Usage: python test_pause_resume_standalone.py
 
 Test workflow:
 1. Send a generation request (streaming output)
@@ -48,20 +43,6 @@ async def generate_with_streaming(
     show_streaming: bool = False,
     label: str = "",
 ) -> Optional[any]:
-    """
-    Generate a completion with optional streaming display.
-    
-    Args:
-        engine: The AsyncLLM engine
-        prompt: Input prompt
-        request_id: Unique request ID
-        max_tokens: Maximum tokens to generate
-        show_streaming: If True, print tokens as they are generated
-        label: Label for streaming output (e.g., "Req0")
-        
-    Returns:
-        Final RequestOutput or None if error
-    """
     sampling_params = SamplingParams(
         temperature=0.7,
         max_tokens=max_tokens,
@@ -113,14 +94,12 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     engine = AsyncLLM.from_engine_args(engine_args)
     print_result("✓", "Engine initialized successfully")
     
-    # ========================================
     # Step 1: Send a generation request with streaming output
-    # ========================================
     print_step(1, "Sending generation request (streaming output)")
     print()
     
-    initial_prompt = "Write a short story about a robot learning to paint.\nA:"
-    print_result("→", f"Prompt: {initial_prompt.split(':')[1].strip()[:50]}...")
+    initial_prompt = "Write a short story about a robot learning to paint."
+    print_result("→", f"Prompt: {initial_prompt}")
     print_result("  ", "Streaming output:")
     
     initial_task = asyncio.create_task(
@@ -128,7 +107,7 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
             engine,
             prompt=initial_prompt,
             request_id="initial_request",
-            max_tokens=100,  # Longer to show streaming effect
+            max_tokens=2048,  # Longer to show streaming effect
             show_streaming=True,
             label="Initial",
         )
@@ -137,9 +116,7 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     # Let it generate for a while to see streaming output
     await asyncio.sleep(0.5)  # Let it generate some tokens
     
-    # ========================================
     # Step 2: Pause generation
-    # ========================================
     print_step(2, f"Pausing generation (mode: {mode}, clear_cache: {clear_cache})")
     print_result("⏸️", "Calling pause_generation()...")
     
@@ -154,13 +131,11 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     print_result("✓", "Confirmed: Engine is in paused state")
     print_result("✓", "KV cache and prefix cache have been cleared")
     
-    # ========================================
     # Step 3: Send new request during pause (should block)
-    # ========================================
     print_step(3, "Sending request during pause (should block)")
     
-    blocked_prompt = "What is the meaning of life?\nA:"
-    print_result("→", f"Prompt: {blocked_prompt.split('?')[0]}?")
+    blocked_prompt = "What is the meaning of life?"
+    print_result("→", f"Prompt: {blocked_prompt}")
     
     blocked_task = asyncio.create_task(
         generate_with_streaming(
@@ -180,9 +155,7 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     print_result("✓", "Request is blocked (paused state working correctly)")
     print_result("  ", "The request is waiting for resume...")
     
-    # ========================================
     # Step 4: Resume generation
-    # ========================================
     print_step(4, "Resuming generation")
     
     resume_result = await engine.resume_generation()
@@ -192,9 +165,7 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     assert not status["is_paused"]
     print_result("✓", "Confirmed: Engine is resumed")
     
-    # ========================================
     # Step 5: Verify blocked request completes
-    # ========================================
     print_step(5, "Waiting for blocked request to complete")
     blocked_output = await asyncio.wait_for(blocked_task, timeout=15.0)
     
@@ -203,17 +174,14 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     
     generated_text = blocked_output.outputs[0].text
     print_result("✓", "Blocked request completed after resume")
-    print_result("  ", f"Prompt: {blocked_prompt.strip()}")
+    print_result("  ", f"Prompt: {blocked_prompt}")
     print_result("  ", f"Generated: {generated_text[:60]}...")
         
-    
-    # ========================================
     # Step 6: Send new request (should work normally)
-    # ========================================
     print_step(6, "Sending new request after resume")
     
     new_prompt = "What is the speed of light?"
-    print_result("→", f"Prompt: {new_prompt.split('?')[0]}?")
+    print_result("→", f"Prompt: {new_prompt}")
     print()
     
     new_output = await generate_with_streaming(
@@ -221,7 +189,7 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
         prompt=new_prompt,
         request_id="new_request_after_resume",
         max_tokens=30,
-        show_streaming=False,  # Don't show streaming for simplicity
+        show_streaming=False,
         label="NewReq",
     )
     
@@ -229,18 +197,16 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     print_result("✓", "New request completed successfully")
     print_result("  ", f"Generated: {new_output.outputs[0].text[:60]}...")
     
-    
-    # ========================================
-    # Verification: Check initial request completed
-    # ========================================
-    print_step(7, "Verifying initial request completed")
-    
-    initial_output = await asyncio.wait_for(initial_task, timeout=5.0)
-    
-    text = initial_output.outputs[0].text.strip()
-    print_result("✓", f"Initial request completed")
-    print_result("  ", f"Generated text: '{text}...'")
-    print_result("  ", f"Total tokens: {len(initial_output.outputs[0].token_ids)}")
+    # Verification: Check initial request completed in gentle mode
+    if mode == 'gentle':
+        print_step(7, "Verifying initial request completed in gentle mode")
+        
+        initial_output = await asyncio.wait_for(initial_task, timeout=5.0)
+        
+        text = initial_output.outputs[0].text
+        print_result("  ", f"Initial Request Prompt: {initial_prompt}")
+        print_result("  ", f"Generated: {text}")
+        print_result("  ", f"Total tokens: {len(initial_output.outputs[0].token_ids)}")
     
 
 if __name__ == "__main__":
