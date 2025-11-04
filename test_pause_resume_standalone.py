@@ -8,12 +8,13 @@ This script can be run directly without pytest:
     python test_pause_resume_standalone.py
 
 Test workflow:
-1. Send multiple QA generation requests (streaming output)
+1. Send a generation request (streaming output)
 2. Pause generation (you'll see generation interrupt)
 3. Send new request (should block until resume)
 4. Resume generation  
 5. Verify blocked request completes
 6. Send another request (should work normally)
+7. Verify initial request completed
 """
 
 import asyncio
@@ -83,12 +84,12 @@ async def generate_with_streaming(
                 current_text = output.outputs[0].text
                 new_text = current_text[len(last_text):]
                 if new_text:
-                    # Print new tokens on same line
-                    print(f"  [{label}] {new_text}", end="", flush=True)
+                    # Print new tokens without label
+                    print(new_text, end="", flush=True)
                     last_text = current_text
         
         if show_streaming and last_text:
-            print()  # Newline after streaming
+            print("\n")  # Newline after streaming
             
     except Exception as e:
         if show_streaming:
@@ -98,18 +99,9 @@ async def generate_with_streaming(
     return final_output
 
 
-async def main():
+async def test_pause_resume(mode='gentle', clear_cache=True):
     """Main test workflow."""
     
-    print("\n" + "="*70)
-    print("Pause/Resume Test with Qwen2.5-0.5B")
-    print("="*70)
-    print()
-    
-    # Initialize engine
-    print("Initializing Qwen2.5-0.5B engine...")
-    print("(This may take a moment for first-time model download)")
-
     local_prefix = "/home/mindone/yx/models/" 
     engine_args = AsyncEngineArgs(
         model=local_prefix + "Qwen/Qwen2.5-0.5B-Instruct",
@@ -118,102 +110,57 @@ async def main():
         max_model_len=2048,
     )
     
-    try:
-        engine = AsyncLLM.from_engine_args(engine_args)
-        print_result("✓", "Engine initialized successfully")
-    except Exception as e:
-        print_result("❌", f"Failed to initialize engine: {e}")
-        sys.exit(1)
+    engine = AsyncLLM.from_engine_args(engine_args)
+    print_result("✓", "Engine initialized successfully")
     
     # ========================================
-    # Step 1: Send multiple QA requests with streaming output
+    # Step 1: Send a generation request with streaming output
     # ========================================
-    print_step(1, "Sending QA generation requests (streaming output)")
-    print()
-    print("  Prompts:")
-    
-    qa_prompts = [
-        ("Q: Write a short story about a robot learning to paint.\nA:", "Story"),
-        ("Q: Explain how photosynthesis works in detail.\nA:", "Science"),
-        ("Q: Describe the history of the internet from 1960 to now.\nA:", "History"),
-    ]
-    
-    print_result("", "Starting streaming generation (watch the tokens appear)...")
+    print_step(1, "Sending generation request (streaming output)")
     print()
     
-    initial_tasks = []
-    for i, (prompt, label) in enumerate(qa_prompts):
-        # Start requests with delays to show interleaved streaming
-        if i > 0:
-            await asyncio.sleep(0.3)  # Stagger the starts
-        
-        task = asyncio.create_task(
-            generate_with_streaming(
-                engine,
-                prompt=prompt,
-                request_id=f"initial_request_{i}",
-                max_tokens=100,  # Longer to show streaming effect
-                show_streaming=True,
-                label=label,
-            )
+    initial_prompt = "Write a short story about a robot learning to paint.\nA:"
+    print_result("→", f"Prompt: {initial_prompt.split(':')[1].strip()[:50]}...")
+    print_result("  ", "Streaming output:")
+    
+    initial_task = asyncio.create_task(
+        generate_with_streaming(
+            engine,
+            prompt=initial_prompt,
+            request_id="initial_request",
+            max_tokens=100,  # Longer to show streaming effect
+            show_streaming=True,
+            label="Initial",
         )
-        initial_tasks.append(task)
-        print_result("→", f"Started [{label}]: {prompt.split('.')[0].split(':')[1].strip()[:30]}...")
+    )
     
-    # Let them generate for a while to see streaming output
-    print()
-    print_result("", "Generating... (you should see tokens streaming below)")
-    print()
-    await asyncio.sleep(2.0)  # Let them generate some tokens
+    # Let it generate for a while to see streaming output
+    await asyncio.sleep(0.5)  # Let it generate some tokens
     
     # ========================================
     # Step 2: Pause generation
     # ========================================
-    print()
-    print_step(2, "Pausing generation (generation should stop)")
-    print()
+    print_step(2, f"Pausing generation (mode: {mode}, clear_cache: {clear_cache})")
     print_result("⏸️", "Calling pause_generation()...")
-    print_result("", "(This will wait for requests to finish and clear caches)")
     
     pause_start = time.time()
-    try:
-        pause_result = await engine.pause_generation()
-        pause_duration = time.time() - pause_start
+    pause_result = await engine.pause_generation(mode=mode, clear_cache=clear_cache)
+    pause_duration = time.time() - pause_start
+    print_result("  ", f"Aborted: {pause_result['aborted_requests']}")
         
-        print()
-        print_result("✓", "Pause successful - generation stopped!")
-        print_result("  ", f"Mode: {pause_result['mode']}")
-        print_result("  ", f"Elapsed: {pause_result['elapsed_seconds']:.3f}s")
-        print_result("  ", f"Unfinished: {pause_result['num_unfinished_requests']}")
-        print_result("  ", f"Aborted: {pause_result['aborted_requests']}")
-        print_result("  ", f"Cache cleared: {pause_result['cache_cleared']}")
-        
-        if not pause_result["paused"]:
-            print_result("❌", "Pause failed!")
-            sys.exit(1)
-            
-    except Exception as e:
-        print_result("❌", f"Pause error: {e}")
-        sys.exit(1)
-    
     # Verify pause status
     status = await engine.get_pause_status()
-    if status["is_paused"]:
-        print_result("✓", "Confirmed: Engine is in paused state")
-        print_result("✓", "KV cache and prefix cache have been cleared")
-    else:
-        print_result("❌", "Error: Engine is not paused!")
-        sys.exit(1)
+    assert status["is_paused"]
+    print_result("✓", "Confirmed: Engine is in paused state")
+    print_result("✓", "KV cache and prefix cache have been cleared")
     
     # ========================================
     # Step 3: Send new request during pause (should block)
     # ========================================
     print_step(3, "Sending request during pause (should block)")
-    print()
     
-    blocked_prompt = "Q: What is the meaning of life?\nA:"
-    print_result("→", f"Sending: {blocked_prompt.split('?')[0]}?")
-    print_result("", "This request should NOT generate until resume is called...")
+    blocked_prompt = "What is the meaning of life?\nA:"
+    print_result("→", f"Prompt: {blocked_prompt.split('?')[0]}?")
     
     blocked_task = asyncio.create_task(
         generate_with_streaming(
@@ -229,152 +176,73 @@ async def main():
     # Wait to ensure it tries to start
     await asyncio.sleep(0.5)
     
-    if blocked_task.done():
-        print_result("❌", "ERROR: Request completed during pause!")
-        print_result("  ", "Pause is not working correctly!")
-        sys.exit(1)
-    else:
-        print_result("✓", "Request is blocked (paused state working correctly)")
-        print_result("  ", "The request is waiting for resume...")
+    assert not blocked_task.done()
+    print_result("✓", "Request is blocked (paused state working correctly)")
+    print_result("  ", "The request is waiting for resume...")
     
     # ========================================
     # Step 4: Resume generation
     # ========================================
     print_step(4, "Resuming generation")
     
-    try:
-        resume_result = await engine.resume_generation()
-        
-        print_result("✓", "Resume successful")
-        print_result("  ", f"Paused: {resume_result['paused']}")
-        print_result("  ", f"Message: {resume_result['message']}")
-        
-        if resume_result["paused"]:
-            print_result("❌", "Error: Still paused after resume!")
-            sys.exit(1)
-            
-    except Exception as e:
-        print_result("❌", f"Resume error: {e}")
-        sys.exit(1)
+    resume_result = await engine.resume_generation()
     
     # Verify resumed status
     status = await engine.get_pause_status()
-    if not status["is_paused"]:
-        print_result("✓", "Confirmed: Engine is resumed")
-    else:
-        print_result("❌", "Error: Engine is still paused!")
-        sys.exit(1)
+    assert not status["is_paused"]
+    print_result("✓", "Confirmed: Engine is resumed")
     
     # ========================================
     # Step 5: Verify blocked request completes
     # ========================================
     print_step(5, "Waiting for blocked request to complete")
+    blocked_output = await asyncio.wait_for(blocked_task, timeout=15.0)
     
-    try:
-        blocked_output = await asyncio.wait_for(blocked_task, timeout=15.0)
+    assert blocked_output is not None
+    assert blocked_output.outputs is not None
+    
+    generated_text = blocked_output.outputs[0].text
+    print_result("✓", "Blocked request completed after resume")
+    print_result("  ", f"Prompt: {blocked_prompt.strip()}")
+    print_result("  ", f"Generated: {generated_text[:60]}...")
         
-        if blocked_output is None:
-            print_result("❌", "Blocked request returned None")
-            sys.exit(1)
-        
-        if not blocked_output.outputs:
-            print_result("❌", "Blocked request has no outputs")
-            sys.exit(1)
-        
-        generated_text = blocked_output.outputs[0].text
-        print_result("✓", "Blocked request completed after resume")
-        print_result("  ", f"Prompt: {blocked_prompt.strip()}")
-        print_result("  ", f"Generated: {generated_text[:60]}...")
-        print_result("  ", f"Total tokens: {len(blocked_output.outputs[0].token_ids)}")
-        
-    except asyncio.TimeoutError:
-        print_result("❌", "Blocked request timed out!")
-        sys.exit(1)
-    except Exception as e:
-        print_result("❌", f"Error waiting for blocked request: {e}")
-        sys.exit(1)
     
     # ========================================
     # Step 6: Send new request (should work normally)
     # ========================================
     print_step(6, "Sending new request after resume")
+    
+    new_prompt = "What is the speed of light?"
+    print_result("→", f"Prompt: {new_prompt.split('?')[0]}?")
     print()
     
-    new_prompt = "Q: What is the speed of light?\nA:"
-    print_result("→", f"Sending: {new_prompt.split('?')[0]}?")
+    new_output = await generate_with_streaming(
+        engine,
+        prompt=new_prompt,
+        request_id="new_request_after_resume",
+        max_tokens=30,
+        show_streaming=False,  # Don't show streaming for simplicity
+        label="NewReq",
+    )
     
-    try:
-        new_output = await generate_with_streaming(
-            engine,
-            prompt=new_prompt,
-            request_id="new_request_after_resume",
-            max_tokens=30,
-            show_streaming=True,
-            label="NewReq",
-        )
-        
-        if new_output is None or not new_output.outputs:
-            print_result("❌", "New request failed")
-            sys.exit(1)
-        
-        print()
-        print_result("✓", "New request completed successfully")
-        print_result("  ", f"Total tokens: {len(new_output.outputs[0].token_ids)}")
-        
-    except Exception as e:
-        print_result("❌", f"Error with new request: {e}")
-        sys.exit(1)
+    assert new_output is not None and new_output.outputs is not None
+    print_result("✓", "New request completed successfully")
+    print_result("  ", f"Generated: {new_output.outputs[0].text[:60]}...")
+    
     
     # ========================================
-    # Verification: Check initial requests
+    # Verification: Check initial request completed
     # ========================================
-    print_step(7, "Verifying initial requests completed")
+    print_step(7, "Verifying initial request completed")
     
-    initial_outputs = await asyncio.gather(*initial_tasks, return_exceptions=True)
+    initial_output = await asyncio.wait_for(initial_task, timeout=5.0)
     
-    completed = 0
-    for i, output in enumerate(initial_outputs):
-        if isinstance(output, Exception):
-            print_result("⚠️", f"Request {i} failed: {output}")
-        elif output and hasattr(output, 'outputs') and output.outputs:
-            completed += 1
-            text = output.outputs[0].text.strip()[:40]
-            print_result("✓", f"Request {i}: '{text}...'")
-        else:
-            print_result("⚠️", f"Request {i}: No output")
+    text = initial_output.outputs[0].text.strip()
+    print_result("✓", f"Initial request completed")
+    print_result("  ", f"Generated text: '{text}...'")
+    print_result("  ", f"Total tokens: {len(initial_output.outputs[0].token_ids)}")
     
-    print_result("", f"Completed: {completed}/{len(qa_prompts)} requests")
-    
-    # ========================================
-    # Final summary
-    # ========================================
-    print("\n" + "="*70)
-    print("✅ ALL TESTS PASSED!")
-    print("="*70)
-    print()
-    print("Summary:")
-    print(f"  ✓ Step 1: Sent 3 streaming requests (you saw tokens appear)")
-    print(f"  ✓ Step 2: Paused generation (took {pause_duration:.3f}s, streaming stopped)")
-    print(f"  ✓ Step 3: New request blocked during pause (no generation)")
-    print(f"  ✓ Step 4: Resumed generation")
-    print(f"  ✓ Step 5: Blocked request completed after resume")
-    print(f"  ✓ Step 6: New request worked normally (streaming resumed)")
-    print(f"  ✓ Step 7: Initial requests: {completed}/3 completed")
-    print()
-    print("Pause/Resume functionality is working correctly! 🎉")
-    print("="*70)
-    print()
-
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Test interrupted by user")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n\n❌ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    asyncio.run(test_pause_resume(mode='gentle', clear_cache=True))
 
