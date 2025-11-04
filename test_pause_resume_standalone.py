@@ -38,7 +38,7 @@ async def generate_with_streaming(
     engine: AsyncLLM,
     prompt: str,
     request_id: str,
-    max_tokens: int = 30,
+    max_tokens: int = 128,
     show_streaming: bool = False,
     label: str = "",
 ) -> Optional[any]:
@@ -121,7 +121,7 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     pause_start = time.time()
     pause_result = await engine.pause_generation(mode=mode, clear_cache=clear_cache)
     pause_duration = time.time() - pause_start
-    print_result("  ", "Pause time cost: {pause_duration:.2f}s")
+    print_result("  ", "Pause time cost: f{pause_duration:.4f}s")
     print_result("  ", f"Aborted requests: {pause_result['aborted_requests']}")
         
     # Verify pause status
@@ -141,7 +141,7 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
             engine,
             prompt=blocked_prompt,
             request_id="blocked_request",
-            max_tokens=30,
+            max_tokens=128,
             show_streaming=False,  # Don't show streaming for blocked request
             label="Blocked",
         )
@@ -181,20 +181,19 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     
     new_prompt = "What is the speed of light?"
     print_result("→", f"Prompt: {new_prompt}")
-    print()
     
     new_output = await generate_with_streaming(
         engine,
         prompt=new_prompt,
         request_id="new_request_after_resume",
-        max_tokens=30,
+        max_tokens=128,
         show_streaming=False,
         label="NewReq",
     )
     
     assert new_output is not None and new_output.outputs is not None
-    print_result("✓", "New request completed successfully")
     print_result("  ", f"Generated: {new_output.outputs[0].text[:60]}...")
+    print_result("✓", "New request completed successfully")
     
 
 if __name__ == "__main__":
