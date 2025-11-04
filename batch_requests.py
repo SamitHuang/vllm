@@ -5,7 +5,8 @@ import sys
 import aiohttp
 
 SERVER_URL = "http://localhost:8000"
-MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
+local_prefix = "/home/mindone/yx/models/"
+MODEL = local_prefix + "Qwen/Qwen2.5-0.5B-Instruct"
 
 async def send_request(session, prompt, req_id):
     async with session.post(
@@ -18,12 +19,12 @@ async def send_request(session, prompt, req_id):
 async def main():
     num_prompts = int(sys.argv[1]) if len(sys.argv) > 1 else 5
     prompt = "Write a story about artificial intelligence:"
-    
+
     async with aiohttp.ClientSession() as session:
         tasks = [send_request(session, prompt, f"Req{i+1}") for i in range(num_prompts)]
         await asyncio.gather(*tasks)
-    
-    print(f"\n✓ Sent {num_prompts} concurrent requests")
+
+    print(f"\n✓ Sent {num_prompts} requests")
 
 if __name__ == "__main__":
     asyncio.run(main())
