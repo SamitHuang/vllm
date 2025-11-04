@@ -585,12 +585,10 @@ class AsyncLLM(EngineClient):
 
         async with self._pause_cond:
             if self._is_paused:
-                unfinished = self.output_processor.get_num_unfinished_requests()
                 return {
                     "paused": True,
                     "mode": mode,
                     "message": "Already paused",
-                    "num_unfinished_requests": unfinished,
                     "aborted_requests": 0,
                     "cache_cleared": False,
                 }
@@ -624,7 +622,6 @@ class AsyncLLM(EngineClient):
             "paused": True,
             "mode": mode,
             "message": "Generation paused successfully",
-            "num_unfinished_requests": self.output_processor.get_num_unfinished_requests(),
             "elapsed_seconds": elapsed,
             "aborted_requests": aborted_requests,
             "cache_cleared": cache_cleared,
@@ -638,7 +635,6 @@ class AsyncLLM(EngineClient):
                 return {
                     "paused": False,
                     "message": "Not paused",
-                    "num_unfinished_requests": self.output_processor.get_num_unfinished_requests(),
                 }
 
             self._is_paused = False
@@ -647,7 +643,6 @@ class AsyncLLM(EngineClient):
         return {
             "paused": False,
             "message": "Generation resumed",
-            "num_unfinished_requests": self.output_processor.get_num_unfinished_requests(),
         }
 
     async def get_pause_status(self) -> dict[str, Any]:
