@@ -564,19 +564,20 @@ class AsyncLLM(EngineClient):
         self,
         *,
         mode: str = "gentle",
-        drain_timeout: float = 30.0,
+        clear_cache: bool = True,
     ) -> dict[str, Any]:
         """Pause generation to allow model weight updates.
 
         Args:
             mode: ``"gentle"`` waits for in-flight requests to finish.
                 ``"force"`` immediately aborts running requests.
-            drain_timeout: Maximum seconds to wait for requests to finish. When
-                ``mode="force"`` this is used as a safeguard to ensure aborts
-                complete.
+            clear_cache: Whether to clear KV cache and prefix cache after
+                draining. Set to ``False`` to preserve cache for faster resume.
+                Default is ``True`` (clear caches).
 
         Returns:
-            A dictionary describing the pause status.
+            A dictionary describing the pause status, including ``cache_cleared``
+            field indicating whether caches were cleared.
         """
 
         if mode not in {"gentle", "force"}:
@@ -589,70 +590,44 @@ class AsyncLLM(EngineClient):
                     "paused": True,
                     "mode": mode,
                     "message": "Already paused",
-                    "drained": unfinished == 0,
                     "num_unfinished_requests": unfinished,
-                    "elapsed_seconds": 0.0,
                     "aborted_requests": 0,
+                    "cache_cleared": False,
                 }
 
             self._is_paused = True
 
         start_time = time.perf_counter()
-        drained = False
         aborted_requests = 0
 
         if mode == "force":
-            request_ids = self.output_processor.get_tracked_request_ids()
+            # Get all tracked request IDs directly from output_processor
+            request_ids = list(self.output_processor.request_states.keys())
             aborted_requests = len(request_ids)
             if request_ids:
                 await self.abort(request_ids)
 
-            deadline = start_time + drain_timeout
-            while self.output_processor.has_unfinished_requests():
-                if time.perf_counter() >= deadline:
-                    break
-                await asyncio.sleep(0.05)
+        # Wait for all requests to drain
+        while self.output_processor.has_unfinished_requests() or \
+              self.engine_core.dp_engines_running():
+            await asyncio.sleep(0.05)
 
-            drained = (
-                not self.output_processor.has_unfinished_requests()
-                and not self.engine_core.dp_engines_running()
-            )
-        else:
-            deadline = start_time + drain_timeout
-            while True:
-                unfinished = self.output_processor.has_unfinished_requests()
-                dp_running = self.engine_core.dp_engines_running()
-                if not unfinished and not dp_running:
-                    drained = True
-                    break
-
-                if time.perf_counter() >= deadline:
-                    break
-
-                await asyncio.sleep(0.05)
-
-        if drained:
+        # Clear cache if requested
+        cache_cleared = False
+        if clear_cache:
             await self.reset_prefix_cache()
             await self.reset_mm_cache()
-        else:
-            logger.warning(
-                "pause_generation(%s) timed out: unfinished=%s, dp_running=%s",
-                mode,
-                self.output_processor.get_num_unfinished_requests(),
-                self.engine_core.dp_engines_running(),
-            )
+            cache_cleared = True
 
         elapsed = time.perf_counter() - start_time
         return {
             "paused": True,
             "mode": mode,
-            "message": "Generation paused successfully"
-            if drained
-            else "Generation paused with outstanding requests",
-            "drained": drained,
+            "message": "Generation paused successfully",
             "num_unfinished_requests": self.output_processor.get_num_unfinished_requests(),
             "elapsed_seconds": elapsed,
             "aborted_requests": aborted_requests,
+            "cache_cleared": cache_cleared,
         }
 
     async def resume_generation(self) -> dict[str, Any]:

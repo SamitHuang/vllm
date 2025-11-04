@@ -55,18 +55,28 @@ curl -N http://localhost:8000/v1/completions \
 ### Step 2: 暂停生成
 
 ```bash
-curl -X POST "http://localhost:8000/v1/pause?mode=gentle"
+# 暂停并清除缓存（默认）
+curl -X POST "http://localhost:8000/v1/pause?mode=gentle&clear_cache=true"
+
+# 或暂停但保留缓存
+curl -X POST "http://localhost:8000/v1/pause?mode=gentle&clear_cache=false"
 ```
+
+**参数说明**：
+- `mode`: 暂停模式
+  - `gentle` - 等待正在执行的请求完成（默认）
+  - `force` - 立即中止正在执行的请求
+- `clear_cache`: 是否清除 KV cache 和 prefix cache（默认 true）
 
 **预期响应**：
 ```json
 {
   "paused": true,
   "mode": "gentle",
-  "drained": true,
   "elapsed_seconds": 1.23,
   "num_unfinished_requests": 0,
   "aborted_requests": 0,
+  "cache_cleared": true,
   "message": "Generation paused successfully"
 }
 ```
@@ -74,7 +84,8 @@ curl -X POST "http://localhost:8000/v1/pause?mode=gentle"
 **预期效果**：
 - ✅ 流式输出立即停止
 - ✅ `paused: true`
-- ✅ `drained: true`（gentle mode 等待完成）
+- ✅ `cache_cleared: true/false`（取决于参数）
+- ✅ 请求完全 drain，`num_unfinished_requests: 0`
 
 ### Step 3: 在 pause 期间发送新请求
 

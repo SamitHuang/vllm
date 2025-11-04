@@ -260,6 +260,54 @@ async def test_pause_invalid_mode(engine: AsyncLLM):
         await engine.pause_generation(mode="invalid")
 
 
+@pytest.mark.asyncio
+async def test_pause_with_clear_cache(engine: AsyncLLM):
+    """Test pause with clear_cache parameter."""
+    
+    # Test pause with clear_cache=True (default)
+    result = await engine.pause_generation(clear_cache=True)
+    assert result["paused"] is True
+    assert result["cache_cleared"] is True
+    assert result["drained"] is True
+    
+    # Resume
+    await engine.resume_generation()
+    
+    # Test pause with clear_cache=False
+    result = await engine.pause_generation(clear_cache=False)
+    assert result["paused"] is True
+    assert result["cache_cleared"] is False
+    assert result["drained"] is True
+    
+    # Resume
+    await engine.resume_generation()
+
+
+@pytest.mark.asyncio
+async def test_pause_clear_cache_during_generation(engine: AsyncLLM):
+    """Test clear_cache parameter during active generation."""
+    
+    sampling_params = SamplingParams(max_tokens=50)
+    
+    # Start a generation
+    gen = engine.generate("Write a story:", sampling_params, request_id="test")
+    task = asyncio.create_task(collect_outputs(gen))
+    
+    # Let it generate a bit
+    await asyncio.sleep(0.5)
+    
+    # Pause without clearing cache
+    result = await engine.pause_generation(mode="gentle", clear_cache=False)
+    assert result["paused"] is True
+    assert result["cache_cleared"] is False
+    
+    # Resume
+    await engine.resume_generation()
+    
+    # Wait for completion
+    await task
+
+
 async def collect_outputs(generator):
     """Helper to collect all outputs from an async generator."""
     final_output = None

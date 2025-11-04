@@ -388,8 +388,18 @@ async def ping(raw_request: Request) -> Response:
 
 
 @router.post("/v1/pause")
-async def pause_generation(raw_request: Request) -> JSONResponse:
-    """Pause generation requests to allow weight updates."""
+async def pause_generation(
+    raw_request: Request,
+    mode: Literal["gentle", "force"] = Query("gentle"),
+    clear_cache: bool = Query(True),
+) -> JSONResponse:
+    """Pause generation requests to allow weight updates.
+    
+    Args:
+        mode: Pause mode - "gentle" waits for requests to finish, 
+              "force" aborts running requests.
+        clear_cache: Whether to clear KV cache and prefix cache after draining.
+    """
 
     engine = engine_client(raw_request)
     if not hasattr(engine, "pause_generation"):
@@ -400,10 +410,11 @@ async def pause_generation(raw_request: Request) -> JSONResponse:
             status_code=HTTPStatus.NOT_IMPLEMENTED.value,
         )
 
-    mode = raw_request.query_params.get("mode", "gentle")
-
     try:
-        result = await engine.pause_generation(mode=mode)
+        result = await engine.pause_generation(
+            mode=mode,
+            clear_cache=clear_cache,
+        )
     except ValueError as err:
         return JSONResponse(
             content={"error": str(err)},
