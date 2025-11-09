@@ -22,6 +22,7 @@ Test workflow:
 
 import asyncio
 import time
+from typing import Any, Optional
 
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -42,7 +43,7 @@ async def generate_with_streaming(
     max_tokens: int = 128,
     show_streaming: bool = False,
     label: str = "",
-) -> any | None:
+) -> Optional[Any]:
     sampling_params = SamplingParams(
         temperature=0.7,
         max_tokens=max_tokens,
