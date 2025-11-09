@@ -424,13 +424,8 @@ async def pause_generation(
             wait_for_inflight_requests=wait_for_inflight_requests,
             clear_cache=clear_cache,
         )
-        return JSONResponse(
-            {
-                "paused": True,
-                "wait_for_inflight_requests": wait_for_inflight_requests,
-                "message": "Generation paused",
-            }
-        )
+        return Response(status_code=200)
+
     except ValueError as err:
         return JSONResponse(
             content={"error": str(err)},
@@ -452,7 +447,7 @@ async def resume_generation(raw_request: Request) -> JSONResponse:
 
     try:
         await engine.resume_generation()
-        return JSONResponse({"paused": False, "message": "Generation resumed"})
+        return Response(status_code=200)
     except Exception as err:  # pragma: no cover - defensive
         logger.exception("Failed to resume generation")
         return JSONResponse(
@@ -461,8 +456,8 @@ async def resume_generation(raw_request: Request) -> JSONResponse:
         )
 
 
-@router.get("/pause_status")
-async def pause_status(raw_request: Request) -> JSONResponse:
+@router.get("/is_paused")
+async def is_paused(raw_request: Request) -> JSONResponse:
     """Return the current pause status."""
 
     engine = engine_client(raw_request)
