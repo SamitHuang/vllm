@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """
-Test for pause/resume functionality with Qwen2.5-0.5B.
+Test for pause/resume functionality with Qwen2.5-1.5B.
 Usage: python test_pause_resume_standalone.py
 
 Test workflow:
@@ -15,7 +15,7 @@ Test workflow:
 
 import asyncio
 import time
-from typing import Any, Optional
+from typing import Any
 
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -36,7 +36,7 @@ async def generate_with_streaming(
     max_tokens: int = 128,
     show_streaming: bool = False,
     label: str = "",
-) -> Optional[Any]:
+) -> Any | None:
     sampling_params = SamplingParams(
         temperature=0.7,
         max_tokens=max_tokens,
@@ -79,7 +79,7 @@ async def test_pause_resume(wait_for_inflight_requests=False, clear_cache=True):
 
     local_prefix = "/home/mindone/yx/models/"
     engine_args = AsyncEngineArgs(
-        model=local_prefix + "Qwen/Qwen2.5-0.5B-Instruct",
+        model=local_prefix + "Qwen/Qwen2.5-1.5B-Instruct",
         enforce_eager=True,
         gpu_memory_utilization=0.4,
         max_model_len=2048,

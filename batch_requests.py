@@ -6,7 +6,7 @@ import aiohttp
 
 SERVER_URL = "http://localhost:8000"
 local_prefix = "/home/mindone/yx/models/"
-MODEL = local_prefix + "Qwen/Qwen2.5-0.5B-Instruct"
+MODEL = local_prefix + "Qwen/Qwen2.5-1.5B-Instruct"
 
 async def send_request(session, prompt, req_id):
     async with session.post(

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """
-Test for pause/resume functionality with Qwen2.5-0.5B or OLMoE-1B-7B
+Test for pause/resume functionality with Qwen2.5-1.5B or OLMoE-1B-7B
 
 Usage:
     # Test with Qwen2.5 (no parallelism)
@@ -22,7 +22,7 @@ Test workflow:
 
 import asyncio
 import time
-from typing import Any, Optional
+from typing import Any
 
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -43,7 +43,7 @@ async def generate_with_streaming(
     max_tokens: int = 128,
     show_streaming: bool = False,
     label: str = "",
-) -> Optional[Any]:
+) -> Any | None:
     sampling_params = SamplingParams(
         temperature=0.7,
         max_tokens=max_tokens,
@@ -113,8 +113,8 @@ async def test_pause_resume(
 
     # Model configuration
     if model_name == "qwen":
-        model_path = "Qwen/Qwen2.5-0.5B-Instruct"
-        gpu_util = 0.4
+        model_path = "Qwen/Qwen2.5-1.5B-Instruct"
+        gpu_util = 0.5
     elif model_name == "olmoe":
         model_path = "allenai/OLMoE-1B-7B-0924"
         gpu_util = 0.7
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     # Configuration Examples
     # ========================================================================
 
-    # Example 1: Test with Qwen2.5-0.5B (simple, no parallelism)
+    # Example 1: Test with Qwen2.5-1.5B (simple, no parallelism)
     asyncio.run(test_pause_resume(model_name="qwen"))
 
     # Example 2: Test with OLMoE (DP+EP enabled, 4 GPUs)
