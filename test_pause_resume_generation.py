@@ -88,7 +88,7 @@ async def test_pause_resume(
     dp_size=1,
     tp_size=1,
     enable_ep=False,
-    model_prefix="/home/mindone/yx/models/",
+    model_prefix="",
 ):
     """Main test workflow.
 
@@ -172,7 +172,7 @@ async def test_pause_resume(
     )
 
     # Let it generate for a while to see streaming output
-    await asyncio.sleep(2)  # Let it generate some tokens
+    await asyncio.sleep(1)  # Let it generate some tokens
 
     # Step 2: Pause generation
     print_step(
