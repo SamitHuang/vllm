@@ -402,7 +402,7 @@ async def ping(raw_request: Request) -> Response:
     return await health(raw_request)
 
 
-@router.post("/pause_generation")
+@router.post("/pause")
 async def pause_generation(
     raw_request: Request,
     wait_for_inflight_requests: bool = Query(False),
@@ -444,7 +444,7 @@ async def pause_generation(
         )
 
 
-@router.post("/resume_generation")
+@router.post("/resume")
 async def resume_generation(raw_request: Request) -> JSONResponse:
     """Resume generation after a pause."""
 
