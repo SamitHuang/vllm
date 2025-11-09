@@ -77,22 +77,19 @@ result = await engine.resume_generation()
 print(result["message"])
 ```
 
-#### `async def get_pause_status() -> dict`
+#### `async def is_paused() -> bool`
 
 Gets the current pause status.
 
 **Returns:**
 ```python
-{
-    "is_paused": False,
-    "num_unfinished_requests": 5
-}
+False
 ```
 
 **Example:**
 ```python
-status = await engine.get_pause_status()
-if status["is_paused"]:
+paused = await engine.is_paused()
+if paused:
     print("Generation is paused")
 ```
 
@@ -100,15 +97,15 @@ if status["is_paused"]:
 
 The OpenAI-compatible API server exposes three endpoints:
 
-#### `POST /v1/pause`
+#### `POST /pause`
 
 Pause all generation requests. Use the optional `mode` query parameter to
 choose between gentle and force pause.
 
 **Request:**
 ```bash
-curl -X POST "http://localhost:8000/v1/pause?mode=gentle"
-curl -X POST "http://localhost:8000/v1/pause?mode=force"
+curl -X POST "http://localhost:8000/pause?mode=gentle"
+curl -X POST "http://localhost:8000/pause?mode=force"
 ```
 
 **Response:**
@@ -127,13 +124,13 @@ curl -X POST "http://localhost:8000/v1/pause?mode=force"
 When `mode=force`, `aborted_requests` reports how many requests were
 terminated.
 
-#### `POST /v1/resume`
+#### `POST /resume`
 
 Resume all generation requests.
 
 **Request:**
 ```bash
-curl -X POST http://localhost:8000/v1/resume
+curl -X POST http://localhost:8000/resume
 ```
 
 **Response:**
@@ -145,13 +142,13 @@ curl -X POST http://localhost:8000/v1/resume
 }
 ```
 
-#### `GET /v1/pause_status`
+#### `GET /pause_status`
 
 Get current pause status.
 
 **Request:**
 ```bash
-curl http://localhost:8000/v1/pause_status
+curl http://localhost:8000/pause_status
 ```
 
 **Response:**
@@ -249,14 +246,14 @@ async def training_worker(session):
         await asyncio.sleep(5.0)
         
         # Pause
-        async with session.post("http://localhost:8000/v1/pause") as resp:
+        async with session.post("http://localhost:8000/pause") as resp:
             print(await resp.json())
         
         # Update weights
         await asyncio.sleep(2.0)
         
         # Resume
-        async with session.post("http://localhost:8000/v1/resume") as resp:
+        async with session.post("http://localhost:8000/resume") as resp:
             print(await resp.json())
 
 async def main():
@@ -376,8 +373,8 @@ finally:
 Check pause status before weight updates:
 
 ```python
-status = await engine.get_pause_status()
-if not status["is_paused"]:
+paused = await engine.is_paused()
+if not paused:
     await engine.pause_generation()
 ```
 

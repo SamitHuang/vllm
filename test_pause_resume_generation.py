@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """
 Test for pause/resume functionality with Qwen2.5-0.5B or OLMoE-1B-7B
 
@@ -79,7 +81,7 @@ async def generate_with_streaming(
 
 
 async def test_pause_resume(
-    mode="force",
+    wait_for_inflight_requests=False,
     clear_cache=True,
     model_name="qwen",
     dp_size=1,
@@ -90,7 +92,8 @@ async def test_pause_resume(
     """Main test workflow.
 
     Args:
-        mode: Pause mode ('gentle' or 'force')
+        wait_for_inflight_requests: Whether to wait for pending in-flight
+            requests to finish before completing the pause.
         clear_cache: Whether to clear KV cache during pause
         model_name: Model to test ('qwen' or 'olmoe')
         dp_size: Data parallel size (for DP+EP)
@@ -118,7 +121,10 @@ async def test_pause_resume(
         raise ValueError(f"Unsupported model: {model_name}")
 
     # Print configuration
-    print(f"Pause mode:     {mode}")
+    print(
+        "Wait for inflight requests:"
+        f" {wait_for_inflight_requests}"
+    )
     print(f"Clear cache:    {clear_cache}")
     print(f"Data parallel:  {dp_size}")
     print(f"Tensor parallel:{tp_size}")
@@ -171,18 +177,27 @@ async def test_pause_resume(
     await asyncio.sleep(2)  # Let it generate some tokens
 
     # Step 2: Pause generation
-    print_step(2, f"Pausing generation (mode: {mode}, clear_cache: {clear_cache})")
+    print_step(
+        2,
+        (
+            "Pausing generation ("
+            f"wait_for_inflight_requests="
+            f"{wait_for_inflight_requests}, clear_cache={clear_cache})"
+        ),
+    )
 
     pause_start = time.time()
-    pause_result = await engine.pause_generation(mode=mode, clear_cache=clear_cache)
+    await engine.pause_generation(
+        wait_for_inflight_requests=wait_for_inflight_requests,
+        clear_cache=clear_cache,
+    )
     pause_duration = time.time() - pause_start
     print("   Pause time cost:", f"{pause_duration:.4f}s")
-    print("   Aborted requests:", pause_result["aborted_requests"])
-    print("   Cache cleared:", pause_result["cache_cleared"])
+    print("   Pause completed")
 
     # Verify pause status
-    status = await engine.get_pause_status()
-    assert status["is_paused"]
+    paused = await engine.is_paused()
+    assert paused
     print("✓  Confirmed: Engine is in paused state")
     if clear_cache:
         print("✓  KV cache and prefix cache have been cleared")
@@ -214,11 +229,11 @@ async def test_pause_resume(
     # Step 4: Resume generation
     print_step(4, "Resuming generation")
 
-    resume_result = await engine.resume_generation()
+    await engine.resume_generation()
 
     # Verify resumed status
-    status = await engine.get_pause_status()
-    assert not status["is_paused"]
+    paused = await engine.is_paused()
+    assert not paused
     print("✓  Confirmed: Engine is resumed")
 
     # Step 5: Verify blocked request completes
@@ -259,22 +274,30 @@ if __name__ == "__main__":
     # ========================================================================
 
     # Example 1: Test with Qwen2.5-0.5B (simple, no parallelism)
-    asyncio.run(
-        test_pause_resume(
-            mode="force",
-            clear_cache=True,
-            model_name="qwen",
-        )
-    )
+    asyncio.run(test_pause_resume(model_name="qwen"))
 
     # Example 2: Test with OLMoE (DP+EP enabled, 4 GPUs)
     # OLMoE has 8 experts, EP size = 2×2 = 4, so each GPU handles 2 experts
     # Uncomment to test with OLMoE
     # asyncio.run(test_pause_resume(
-    #     mode='force',
+    #     wait_for_inflight_requests=False,
     #     clear_cache=True,
     #     model_name="olmoe",
     #     dp_size=2,          # Data parallel
     #     tp_size=2,          # Tensor parallel
     #     enable_ep=True,     # EP size = 2×2 = 4
+    # ))
+
+    # Example 3: Test with gentle pause mode
+    # asyncio.run(test_pause_resume(
+    #     wait_for_inflight_requests=True,
+    #     clear_cache=True,
+    #     model_name="qwen",
+    # ))
+
+    # Example 4: Test without clearing cache
+    # asyncio.run(test_pause_resume(
+    #     wait_for_inflight_requests=False,
+    #     clear_cache=False,
+    #     model_name="qwen",
     # ))

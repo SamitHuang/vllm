@@ -73,7 +73,7 @@ async def generate_with_streaming(
     return final_output
 
 
-async def test_pause_resume(mode='gentle', clear_cache=True):
+async def test_pause_resume(wait_for_inflight_requests=False, clear_cache=True):
     """Main test workflow."""
     
     local_prefix = "/home/mindone/yx/models/" 
@@ -108,19 +108,27 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     await asyncio.sleep(0.5)  # Let it generate some tokens
     
     # Step 2: Pause generation
-    print_step(2, f"Pausing generation (mode: {mode}, clear_cache: {clear_cache})")
+    print_step(
+        2,
+        (
+            "Pausing generation (wait_for_inflight_requests="
+            f"{wait_for_inflight_requests}, clear_cache={clear_cache})"
+        ),
+    )
     
     pause_start = time.time()
-    pause_result = await engine.pause_generation(mode=mode, clear_cache=clear_cache)
+    await engine.pause_generation(
+        wait_for_inflight_requests=wait_for_inflight_requests,
+        clear_cache=clear_cache,
+    )
     pause_duration = time.time() - pause_start
     print("  ", f"Pause time cost: {pause_duration:.4f}s")
-    print("  ", f"Aborted requests: {pause_result['aborted_requests']}")
+    print("  ", "Pause completed")
         
     # Verify pause status
-    status = await engine.get_pause_status()
-    assert status["is_paused"]
+    paused = await engine.is_paused()
+    assert paused
     print("✓ ", "Confirmed: Engine is in paused state")
-    print("✓ ", "KV cache and prefix cache have been cleared")
     
     # Step 3: Send new request during pause (should block)
     print_step(3, "Sending request during pause (should block)")
@@ -149,11 +157,11 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     # Step 4: Resume generation
     print_step(4, "Resuming generation")
     
-    resume_result = await engine.resume_generation()
+    await engine.resume_generation()
     
     # Verify resumed status
-    status = await engine.get_pause_status()
-    assert not status["is_paused"]
+    paused = await engine.is_paused()
+    assert not paused
     print("✓ ", "Confirmed: Engine is resumed")
     
     # Step 5: Verify blocked request completes
@@ -189,6 +197,5 @@ async def test_pause_resume(mode='gentle', clear_cache=True):
     
 
 if __name__ == "__main__":
-    # Default mode is now 'force'
-    asyncio.run(test_pause_resume(mode='force', clear_cache=True))
+    asyncio.run(test_pause_resume(wait_for_inflight_requests=False, clear_cache=True))
 
