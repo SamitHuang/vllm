@@ -567,15 +567,15 @@ class AsyncLLM(EngineClient):
             self._paused = True
 
         if not wait_for_inflight_requests:
-            # Get all tracked request IDs directly from output_processor
             request_ids = list(self.output_processor.request_states.keys())
             if request_ids:
                 await self.abort(request_ids)
 
-        # Wait for all running requests to drain before clearing cache.
-        await self.output_processor.wait_for_requests_drained()
+        # Wait for running requests to drain before clearing cache.
+        if self.output_processor.has_unfinished_requests():
+            await self.output_processor.wait_for_requests_drained()
 
-        # Clear cache if requested
+        # Clear cache
         if clear_cache:
             await self.reset_prefix_cache()
             await self.reset_mm_cache()
