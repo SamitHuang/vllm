@@ -121,10 +121,7 @@ async def test_pause_resume(
         raise ValueError(f"Unsupported model: {model_name}")
 
     # Print configuration
-    print(
-        "Wait for inflight requests:"
-        f" {wait_for_inflight_requests}"
-    )
+    print(f"Wait for inflight requests: {wait_for_inflight_requests}")
     print(f"Clear cache:    {clear_cache}")
     print(f"Data parallel:  {dp_size}")
     print(f"Tensor parallel:{tp_size}")

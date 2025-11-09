@@ -566,18 +566,14 @@ class AsyncLLM(EngineClient):
                 return
             self._paused = True
 
-        aborted_requests = 0
         if not wait_for_inflight_requests:
             # Get all tracked request IDs directly from output_processor
             request_ids = list(self.output_processor.request_states.keys())
             if request_ids:
-                aborted_requests = len(request_ids)
                 await self.abort(request_ids)
 
-        # Wait for all requests to drain
-        while self.output_processor.has_unfinished_requests() or \
-              self.engine_core.dp_engines_running():
-            await asyncio.sleep(0.05)
+        # Wait for all running requests to drain before clearing cache.
+        await self.output_processor.wait_for_requests_drained()
 
         # Clear cache if requested
         if clear_cache:
@@ -785,7 +781,7 @@ class AsyncLLM(EngineClient):
             method, timeout, args, kwargs
         )
 
-    async def wait_for_requests_to_drain(self, drain_timeout: int = 300):
+    async def wait_for_requests_drained(self, drain_timeout: int = 300):
         """Wait for all requests to be drained."""
         start_time = time.time()
         while time.time() - start_time < drain_timeout:
@@ -823,7 +819,7 @@ class AsyncLLM(EngineClient):
             "Waiting for requests to drain before scaling up to %s engines...",
             new_data_parallel_size,
         )
-        await self.wait_for_requests_to_drain(drain_timeout)
+        await self.wait_for_requests_drained(drain_timeout)
         logger.info(
             "Requests have been drained, proceeding with scale to %s engines",
             new_data_parallel_size,
