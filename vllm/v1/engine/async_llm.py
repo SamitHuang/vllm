@@ -14,7 +14,7 @@ import torch
 import vllm.envs as envs
 from vllm.config import VllmConfig
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.engine.protocol import Device, EngineClient
+from vllm.engine.protocol import EngineClient
 from vllm.entrypoints.utils import _validate_truncation_size
 from vllm.inputs import PromptType
 from vllm.logger import init_logger
@@ -120,8 +120,9 @@ class AsyncLLM(EngineClient):
         )
 
         # OutputProcessor (converts EngineCoreOutputs --> RequestOutput).
+        stream_interval = self.vllm_config.scheduler_config.stream_interval
         self.output_processor = OutputProcessor(
-            self.tokenizer, log_stats=self.log_stats
+            self.tokenizer, log_stats=self.log_stats, stream_interval=stream_interval
         )
         endpoint = self.observability_config.otlp_traces_endpoint
         if endpoint is not None:
@@ -516,6 +517,8 @@ class AsyncLLM(EngineClient):
                             processed_outputs.reqs_to_abort
                         )
 
+                    output_processor.update_scheduler_stats(outputs.scheduler_stats)
+
                     # 4) Logging.
                     # TODO(rob): make into a coroutine and launch it in
                     # background thread once Prometheus overhead is non-trivial.
@@ -550,7 +553,10 @@ class AsyncLLM(EngineClient):
         wait_for_inflight_requests: bool = False,
         clear_cache: bool = True,
     ) -> None:
-        """Pause generation to allow model weight updates. New generation/encoding requests are blocked until resume.
+        """
+        Pause generation to allow model weight updates.
+
+        New generation/encoding requests are blocked until resume.
 
         Args:
             wait_for_inflight_requests: When ``True`` waits for in-flight
@@ -573,7 +579,7 @@ class AsyncLLM(EngineClient):
 
         # Wait for running requests to drain before clearing cache.
         if self.output_processor.has_unfinished_requests():
-            await self.output_processor.wait_for_requests_drained()
+            await self.output_processor.wait_for_requests_to_drain()
 
         # Clear cache
         if clear_cache:
@@ -730,9 +736,7 @@ class AsyncLLM(EngineClient):
         self.processor.clear_mm_cache()
         await self.engine_core.reset_mm_cache_async()
 
-    async def reset_prefix_cache(self, device: Device | None = None) -> None:
-        if device == Device.CPU:
-            raise ValueError("Not supported on CPU.")
+    async def reset_prefix_cache(self) -> None:
         await self.engine_core.reset_prefix_cache_async()
 
     async def sleep(self, level: int = 1) -> None:
@@ -781,7 +785,7 @@ class AsyncLLM(EngineClient):
             method, timeout, args, kwargs
         )
 
-    async def wait_for_requests_drained(self, drain_timeout: int = 300):
+    async def wait_for_requests_to_drain(self, drain_timeout: int = 300):
         """Wait for all requests to be drained."""
         start_time = time.time()
         while time.time() - start_time < drain_timeout:
@@ -819,7 +823,7 @@ class AsyncLLM(EngineClient):
             "Waiting for requests to drain before scaling up to %s engines...",
             new_data_parallel_size,
         )
-        await self.wait_for_requests_drained(drain_timeout)
+        await self.wait_for_requests_to_drain(drain_timeout)
         logger.info(
             "Requests have been drained, proceeding with scale to %s engines",
             new_data_parallel_size,
